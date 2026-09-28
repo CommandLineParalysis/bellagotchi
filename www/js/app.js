@@ -463,20 +463,27 @@ const BUEHNE_ANTEIL = 0.5;
 function buehneMasse(){
   const el = typeof document !== 'undefined' ? document.getElementById('buehne') : null;
   const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
-  const breiteCss = el ? el.clientWidth : 0;
-  const hoeheCss = typeof window !== 'undefined' ? Math.round(window.innerHeight * BUEHNE_ANTEIL) : 0;
+  let breiteCss = el ? el.clientWidth : 0;
+  let hoeheCss = typeof window !== 'undefined' ? Math.round(window.innerHeight * BUEHNE_ANTEIL) : 0;
   if (!(breiteCss > 60) || !(hoeheCss > 60)){
     // jsdom misst nicht: ein plausibles Handy annehmen.
-    return { b: 209, h: 226, dpr: 3, breiteCss: 390, hoeheCss: 422, mass: PX_JE_CM };
+    breiteCss = 390; hoeheCss = 422;
   }
+  const leinwandB = Math.round(breiteCss * dpr);
+  const leinwandH = Math.round(hoeheCss * dpr);
+  /* Die Breite steht fest: ein ganzes Zimmer. Die Höhe folgt der Form
+     der Bühne — ein schmaleres Gerät zeigt mehr Wand, ein breiteres
+     weniger. Der Maßstab ist das Ergebnis, nicht die Vorgabe. */
+  /* Auf einem flachen, breiten Bildschirm reichte die feste Breite
+     nicht: das Zimmer wäre dann niedriger als Bella. Dann wird der
+     Ausschnitt breiter — mehr Zimmer statt abgeschnittener Bella. */
+  const form = leinwandH / leinwandB;
+  const noetig = Math.ceil((BELLA_CM + ZIMMER.bodenMinCm + 12) / form);
+  const b = Math.max(ZIMMER.breiteCm, noetig);
+  const mass = leinwandB / b;
   return {
-    b: +(breiteCss * dpr / PX_JE_CM).toFixed(2),
-    h: +(hoeheCss * dpr / PX_JE_CM).toFixed(2),
-    dpr, breiteCss, hoeheCss,
-    /* Für die kleinen Raster, die keine eigene Größe haben: eine
-       Rasterzelle entspricht einem Zentimeter. Alles Große geht über
-       maleNachMass und seine Zentimeterangabe. */
-    mass: PX_JE_CM,
+    b, h: +(leinwandH / mass).toFixed(2),
+    dpr, breiteCss, hoeheCss, leinwandB, leinwandH, mass,
   };
 }
 
@@ -485,8 +492,8 @@ function buehneMasse(){
 function px(ctx, s, x, y, b, h, farbe){
   if (!farbe) return;
   ctx.fillStyle = farbe;
-  ctx.fillRect(Math.round(x * PX_JE_CM), Math.round(y * PX_JE_CM),
-               Math.max(0, Math.round(b * PX_JE_CM)), Math.max(0, Math.round(h * PX_JE_CM)));
+  ctx.fillRect(Math.round(x * s.mass), Math.round(y * s.mass),
+               Math.max(0, Math.round(b * s.mass)), Math.max(0, Math.round(h * s.mass)));
 }
 
 /* Eine gefüllte Ellipse, zeilenweise aus Rechtecken — so bekommt sie
@@ -494,8 +501,8 @@ function px(ctx, s, x, y, b, h, farbe){
    Punkten, damit die Stufen auf dem Punktraster sitzen. */
 function ellipse(ctx, s, mx, my, rx, ry, farbe){
   if (!farbe) return;
-  const mxp = mx * PX_JE_CM, myp = my * PX_JE_CM;
-  const rxp = Math.round(rx * PX_JE_CM), ryp = Math.round(ry * PX_JE_CM);
+  const mxp = mx * s.mass, myp = my * s.mass;
+  const rxp = Math.round(rx * s.mass), ryp = Math.round(ry * s.mass);
   ctx.fillStyle = farbe;
   for (let y = -ryp; y <= ryp; y++){
     const t = 1 - (y * y) / (ryp * ryp);
@@ -506,9 +513,9 @@ function ellipse(ctx, s, mx, my, rx, ry, farbe){
 }
 
 function ellipsenRing(ctx, s, mx, my, rx, ry, dicke, farbe){
-  const mxp = mx * PX_JE_CM, myp = my * PX_JE_CM;
-  const rxp = Math.round(rx * PX_JE_CM), ryp = Math.round(ry * PX_JE_CM);
-  const dp = Math.max(1, Math.round(dicke * PX_JE_CM));
+  const mxp = mx * s.mass, myp = my * s.mass;
+  const rxp = Math.round(rx * s.mass), ryp = Math.round(ry * s.mass);
+  const dp = Math.max(1, Math.round(dicke * s.mass));
   ctx.fillStyle = farbe;
   for (let y = -ryp; y <= ryp; y++){
     const t = 1 - (y * y) / (ryp * ryp);
@@ -522,17 +529,22 @@ function ellipsenRing(ctx, s, mx, my, rx, ry, dicke, farbe){
   }
 }
 
-/* Ein Platzhalter-Raster, auf seine wirkliche Größe gezogen und unten
-   links verankert — Dinge stehen auf dem Boden, sie hängen nicht an
-   ihrer Oberkante. */
-function maleNachMass(ctx, s, name, raster, xCm, untenCm, plaetze){
-  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
+/* Ein Möbelstück an seiner Stelle. Drei Quellen, in dieser Reihenfolge:
+   eine gelieferte Datei, eine Zeichnung aus moebel.js, zur Not noch das
+   alte Raster. Verankert wird unten links — Dinge stehen auf dem Boden,
+   sie hängen nicht an ihrer Oberkante. */
+function maleNachMass(ctx, s, name, raster, xCm, untenCm, plaetze, nacht){
   if (maleBildNachMass(ctx, s, name, xCm, untenCm)) return;
-  if (!rows || !rows.length) return;
   const cm = groesseCm(name);
-  const zug = cm ? punkte(cm) / rows.length : PX_JE_CM;
+  if (cm && moebelDa(name)){
+    maleMoebel(ctx, s, name, xCm, untenCm - cm, breiteCm(name, raster), cm, plaetze, nacht);
+    return;
+  }
+  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
+  if (!rows || !rows.length) return;
+  const zug = cm ? (cm * s.mass) / rows.length : s.mass;
   const hoehe = rows.length * zug;
-  const xp = Math.round(xCm * PX_JE_CM), yp = Math.round(untenCm * PX_JE_CM - hoehe);
+  const xp = Math.round(xCm * s.mass), yp = Math.round(untenCm * s.mass - hoehe);
   for (let j = 0; j < rows.length; j++){
     const zeile = rows[j];
     for (let i = 0; i < zeile.length; i++){
@@ -548,20 +560,32 @@ function maleNachMass(ctx, s, name, raster, xCm, untenCm, plaetze){
   }
 }
 
-/* Eine gelieferte Datei: 1:1 gezeichnet, unten links verankert. */
+/* Eine gelieferte Datei. Sie wird auf ihre wirkliche Größe gebracht —
+   nicht umgefärbt, nicht zugeschnitten, nur so groß, wie die
+   eingetragenen Zentimeter es verlangen. Gemalt ist sie in der
+   Modellauflösung (5,6 Punkte je cm); zeigt das Gerät weniger, bleibt
+   der Rest in der Datei und kommt auf einem größeren Bildschirm zum
+   Vorschein. */
 function maleBildNachMass(ctx, s, name, xCm, untenCm){
   const b = BILDER[name];
   if (!b) return false;
-  ctx.drawImage(b.el, Math.round(xCm * PX_JE_CM), Math.round(untenCm * PX_JE_CM - b.h), b.b, b.h);
+  const cm = groesseCm(name);
+  const hoehe = cm ? cm * s.mass : b.h * (s.mass / MODELL_PX_JE_CM);
+  const breite = Math.round(hoehe * b.b / b.h);
+  ctx.drawImage(b.el, Math.round(xCm * s.mass), Math.round(untenCm * s.mass - hoehe),
+                breite, Math.round(hoehe));
   return true;
 }
 
 /* Wie breit etwas in Zentimetern ist — für Platzierungen. */
 function breiteCm(name, raster){
+  const fest = breitenMass(name);
+  if (fest) return fest;
   const b = BILDER[name];
-  if (b) return zentimeter(b.b);
-  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
   const cm = groesseCm(name);
+  // Eine gelieferte Datei behält ihr Seitenverhältnis.
+  if (b) return cm ? +(cm * b.b / b.h).toFixed(1) : +(b.b / MODELL_PX_JE_CM).toFixed(1);
+  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
   if (!rows || !rows.length || !cm) return 0;
   return +(cm * rows[0].length / rows.length).toFixed(1);
 }
@@ -570,9 +594,9 @@ function breiteCm(name, raster){
 const KACHEL_CM = 12;
 
 function maleKachelCm(ctx, s, kachel, xCm, yCm, bCm, hCm, plaetze){
-  const zug = punkte(KACHEL_CM) / 8;
-  const x0 = xCm * PX_JE_CM, y0 = yCm * PX_JE_CM;
-  const bp = bCm * PX_JE_CM, hp = hCm * PX_JE_CM;
+  const zug = (KACHEL_CM * s.mass) / 8;
+  const x0 = xCm * s.mass, y0 = yCm * s.mass;
+  const bp = bCm * s.mass, hp = hCm * s.mass;
   for (let j = 0; j < hp; j += 8 * zug){
     for (let i = 0; i < bp; i += 8 * zug){
       for (let r = 0; r < 8; r++){
@@ -665,37 +689,21 @@ function zappel(){
    säße das Gesicht neben dem Kopf. `untenCm` ist der Boden unter ihren
    Füßen — Dinge stehen auf dem Boden, sie hängen nicht an der
    Oberkante. */
-function maleBellaStehend(ctx, s, xCm, untenCm, gesicht, nurKopf){
+function maleBellaStehend(ctx, s, xCm, untenCm, gesicht, nurKopf, spiegel){
   if (maleBildNachMass(ctx, s, 'bella_steht', xCm, untenCm)) return;
-  const plaetze = outfitPlaetze();
-  const rows = nurKopf ? bellaRaster().slice(0, KOPF_H) : bellaRaster();
-  const cm = nurKopf ? GROESSEN_CM.bella * KOPF_H / (KOPF_H + KOERPER_H) : GROESSEN_CM.bella;
-  const zug = punkte(cm) / rows.length;
-  const xp = Math.round(xCm * PX_JE_CM), yp = Math.round(untenCm * PX_JE_CM - rows.length * zug);
-  const malen = (raster, dx, dy) => {
-    for (let j = 0; j < raster.length; j++)
-      for (let i = 0; i < raster[j].length; i++){
-        const ch = raster[j][i];
-        if (ch === '.') continue;
-        const nr = PLAETZE.indexOf(ch);
-        const farbe = nr >= 0 ? plaetze[nr] : PALETTE[ch];
-        if (!farbe) continue;
-        ctx.fillStyle = farbe;
-        ctx.fillRect(Math.round(xp + (i + dx) * zug), Math.round(yp + (j + dy) * zug),
-                     Math.ceil(zug), Math.ceil(zug));
-      }
-  };
-  malen(rows, 0, 0);
-  malen(GESICHTER[gesicht || stimmung()], GESICHT_X, GESICHT_Y);
-  if (!nurKopf){
-    /* Die Schuhe liegen über den letzten vier Zeilen des Körpers, das
-       Accessoire über dem Kopf. Beide sind 24 breit wie Bella selbst —
-       so braucht es keine Rechnerei, nur eine Zeilennummer. */
-    const sch = ZUBEHOER[DATA.outfit.schuhe];
-    if (sch) malen(sch.p, 0, rows.length - sch.h);
-  }
-  const acc = ZUBEHOER[DATA.outfit.accessoire];
-  if (acc) malen(acc.p, 0, -acc.h + 3);
+  const hoch = nurKopf ? GROESSEN_CM.bella * 0.247 : GROESSEN_CM.bella;
+  const breit = breiteCm('bella', null);
+  maleBellaFigur(ctx, s, xCm, untenCm - hoch, breit, hoch, {
+    frisur: DATA.outfit.frisur,
+    stueck: DATA.outfit.stueck,
+    schuhe: DATA.outfit.schuhe,
+    accessoire: DATA.outfit.accessoire,
+    stoff: stoffFarben(),
+    haar: HAARFARBE,
+    gesicht: gesicht || stimmung(),
+    nurKopf: !!nurKopf,
+    spiegel: !!spiegel,
+  });
 }
 
 function bellaBreiteCm(){ return breiteCm('bella', bellaRaster()); }
@@ -716,30 +724,42 @@ function rahmenUm(ctx, s, name, sprite, p, gewaehlt){
 /* Wie viel vom Zimmer Fußboden ist, in Zentimetern — aber nie so viel,
    dass Bella oben aus dem Bild ragt. Auf einem Gerät mit wenig
    Punktdichte bleibt weniger Zimmer übrig, und dann weicht der Boden. */
-const BODENBAND_MAX = 45;
-
 function bodenbandCm(s){
-  return Math.max(12, Math.min(BODENBAND_MAX, s.h - GROESSEN_CM.bella - 12));
+  /* Der Boden bekommt seinen Anteil — weicht aber, bevor Bella oben
+     aus dem Bild ragt. */
+  const platz = Math.max(12, s.h - GROESSEN_CM.bella - 12);
+  const wunsch = Math.min(ZIMMER.bodenMaxCm, Math.round(s.h * ZIMMER.bodenAnteil));
+  return Math.max(12, Math.min(wunsch, platz));
 }
 
 /* Wo die Möbel stehen: `x` in Zentimetern vom genannten Rand, `wand`
    für Dinge, die hängen (dann ist `y` die Höhe der Oberkante über dem
    Boden). Alles andere steht auf dem Boden. */
 const EINRICHTUNG = {
-  kueche: [ {s:'fenster', von:'mitte', x:-30, hoehe:210},
-            {s:'herd', von:'links', x:6},
-            {s:'kuehlschrank', von:'links', x:60},
-            {s:'tisch', von:'rechts', x:10} ],
-  wohnen: [ {s:'fenster', von:'mitte', x:40, hoehe:215},
-            {s:'regal', von:'links', x:4},
-            {s:'sofa', von:'mitte', x:0},
-            {s:'pflanze', von:'rechts', x:6} ],
-  schrank:[ {s:'stange', von:'mitte', x:-10, hoehe:190},
-            {s:'schrank', von:'links', x:6},
-            {s:'spiegel', von:'rechts', x:12, hoehe:180} ],
+  kueche: [ {s:'fenster', von:'mitte', x:20, hoehe:205},
+            {s:'herd', von:'links', x:20},
+            {s:'kuehlschrank', von:'links', x:88},
+            {s:'tisch', von:'rechts', x:25} ],
+  wohnen: [ {s:'fenster', von:'mitte', x:55, hoehe:210},
+            {s:'regal', von:'links', x:14},
+            {s:'sofa', von:'mitte', x:10},
+            {s:'pflanze', von:'rechts', x:12} ],
+  schlaf: [ {s:'fenster', von:'rechts', x:30, hoehe:215},
+            {s:'bett', von:'links', x:22},
+            {s:'nachttisch', von:'links', x:232},
+            {s:'lampe', von:'rechts', x:18} ],
+  bad:    [ {s:'wanne', von:'links', x:25},
+            {s:'waschbecken', von:'rechts', x:38},
+            {s:'spiegel', von:'rechts', x:36, hoehe:170} ],
+  schrank:[ {s:'stange', von:'mitte', x:30, hoehe:175},
+            {s:'schrank', von:'links', x:18},
+            {s:'spiegel', von:'rechts', x:30, hoehe:170} ],
 };
 
-const BELLA_STELLE = { kueche:'mitte', wohnen:'links', schrank:'rechts' };
+/* Wo Bella im Zimmer steht, in Zentimetern von links. Sie steht ein
+   Stück auf dem Fußboden nach vorn — dadurch steht sie sichtbar vor den
+   Möbeln statt in ihnen drin. */
+const BELLA_STELLE = { kueche:158, wohnen:124, schrank:148, schlaf:150, bad:196 };
 
 function eigenerPlatz(raum, name){
   const r = DATA.plaetze[raum];
@@ -757,7 +777,7 @@ function platzierenCm(m, s, bodenY, raum){
   return { x, unten };
 }
 
-function maleZimmer(ctx, s, raum){
+function maleZimmer(ctx, s, raum, ohneBella){
   const f = raumFarben(raum);
   const bodenY = s.h - bodenbandCm(s);
 
@@ -769,7 +789,8 @@ function maleZimmer(ctx, s, raum){
   const stoff = stoffFarben();
   EINRICHTUNG[raum].forEach(m => {
     const p = platzierenCm(m, s, bodenY, raum);
-    maleNachMass(ctx, s, m.s, MOEBEL[m.s], p.x, p.unten, [stoff[0], stoff[1], stoff[2]]);
+    maleNachMass(ctx, s, m.s, MOEBEL[m.s], p.x, p.unten,
+                 [stoff[0], stoff[1], stoff[2]], tageszeit().nacht);
     if (state.platzieren) rahmenUm(ctx, s, m.s, MOEBEL[m.s], p, m.s === state.platzieren.was);
   });
 
@@ -783,21 +804,19 @@ function maleZimmer(ctx, s, raum){
   }
 
   // Bella steht nur in dem Zimmer, in dem sie gerade ist.
-  if (DATA.bella.ort !== raum) return;
-  const wo = BELLA_STELLE[raum];
+  if (ohneBella || DATA.bella.ort !== raum) return;
   const bb = bellaBreiteCm();
-  const bx = wo === 'links' ? s.b * 0.08
-           : wo === 'rechts' ? s.b * 0.62
-           : s.b * 0.34;
+  const bx = Math.min(BELLA_STELLE[raum] || s.b * 0.4, s.b - bb - 6);
+  const vorn = Math.round(bodenbandCm(s) * 0.5);
   const isst = state.essen && raum === 'kueche';
   const takt = Math.floor(Date.now() / 220) % 4;
   const neigung = isst && takt % 3 === 1 ? 2 : zappel();
-  maleBellaStehend(ctx, s, bx, bodenY + 4 + neigung,
+  maleBellaStehend(ctx, s, bx, bodenY + vorn + neigung,
                    isst ? (takt === 2 ? 'satt' : 'froh') : stimmung());
   if (isst){
     const tellerB = breiteCm('teller', KOCHZEUG.teller);
     maleNachMass(ctx, s, 'teller', KOCHZEUG.teller, bx + bb / 2 - tellerB / 2,
-                 bodenY + 4 - 75, null);
+                 bodenY + vorn - 75, null);
   }
 }
 
@@ -895,221 +914,153 @@ function maleRegal(ctx, s, x, y, b, h){
 /* Reihenfolge ist hier alles: erst die Kissenwand, dann die Matratze
    davor, dann Bella darauf. Andersherum schweben die Kissen über dem
    Bett, statt dahinter zu liegen. */
-function maleKissenwand(ctx, s, mx, unten, rx){
-  const zufall = streuFolge('kissen');
-  const toene = [['#D8A08A','#F0C4A8'], ['#C08070','#E0A48E'],
-                 ['#E3C4A2','#F6E0C6'], ['#B5705C','#D29280']];
-  const wie = Math.max(4, Math.round(rx / 9));
-  for (let i = 0; i < wie; i++){
-    const kx = mx - rx + 6 + Math.round(i * (rx * 2 - 12) / (wie - 1));
-    const ky = unten - 12 - Math.round(zufall() * 4);
-    const kr = 7 + Math.round(zufall() * 3);
-    const [dunkel, hell] = toene[Math.floor(zufall() * toene.length)];
-    ellipse(ctx, s, kx, ky, kr, Math.round(kr * 0.8), dunkel);
-    ellipse(ctx, s, kx, ky - 1, kr - 2, Math.round(kr * 0.58), hell);
-  }
-}
-
-function maleMatratze(ctx, s, mx, unten, rx){
-  ellipse(ctx, s, mx, unten - 6, rx + 1, 11, '#8A6B5C');
-  ellipse(ctx, s, mx, unten - 6, rx, 10, NISCHE.matratze2);
-  ellipse(ctx, s, mx, unten - 8, rx - 2, 9, NISCHE.matratze);
-  px(ctx, s, mx - rx + 4, unten - 13, (rx - 4) * 2, 1, 'rgba(255,255,255,.4)');
-}
-
-/* Bella im Bett: Kopf auf dem Kissen, der Körper als Hügel darunter.
-   Ohne den Hügel läge nur ein Kopf auf der Matratze. Zugedeckt wechselt
-   der Hügel die Farbe und bekommt einen umgeschlagenen Saum — daran
-   sieht man, dass "Zudecken" etwas getan hat. */
-function maleBellaImBett(ctx, s, mx, unten){
-  const plaetze = outfitPlaetze();
-  const stoff = stoffFarben();
-  const zu = DATA.bella.zugedeckt;
-  const lage = DATA.bella.schlaeft ? schlaflage() : SCHLAFLAGEN[0];
-  const kopfX = mx - 20 + lage.dx, kopfY = unten - 22 + lage.dy;
-
-  // Unbedeckt einen Ton dunkler als die Matratze, sonst verschwände der
-  // Körper darin und es läge nur ein Kopf auf dem Bett.
-  const huegel = zu ? stoff[1] : '#B99A82';
-  const huegelHell = zu ? stoff[0] : '#D4B79C';
-  // Der Hügel liegt auf der Seite, auf der sie nicht den Kopf hat.
-  const seite = lage.spiegel ? -1 : 1;
-  ellipse(ctx, s, mx + 9 * seite + lage.dx, unten - 12 + lage.dy, 20, 7, huegel);
-  ellipse(ctx, s, mx + 9 * seite + lage.dx, unten - 13 + lage.dy, 18, 5, huegelHell);
-  if (zu){
-    px(ctx, s, kopfX + 9, unten - 18 + lage.dy, 8, 3, stoff[0]);
-    px(ctx, s, kopfX + 9, unten - 15 + lage.dy, 8, 1, stoff[2]);
-  }
-
-  const kopf = lage.spiegel ? BELLA_LIEGT.map(z => [...z].reverse().join('')) : BELLA_LIEGT;
-  maleFigur(ctx, s, 'bella_liegt', kopf, lage.spiegel ? mx + 20 + lage.dx - 24 : kopfX,
-            kopfY, plaetze);
-}
-
-function maleSchlafnische(ctx, s){
-  const mx = Math.round(s.b / 2);
-  const rx = Math.round(s.b * 0.47);
-  const ry = Math.round(s.h * 0.46);
-  const my = Math.round(s.h * 0.44);
-  const unten = my + ry;
-
-  px(ctx, s, 0, 0, s.b, s.h, NISCHE.wand);
-  px(ctx, s, 0, s.h - 12, s.b, 12, NISCHE.wandtief);
-
-  ellipse(ctx, s, mx, my, rx + 2, ry + 2, NISCHE.rand);
-  ellipse(ctx, s, mx, my, rx, ry, NISCHE.innen);
-  ellipsenRing(ctx, s, mx, my, rx + 2, ry + 2, 1, NISCHE.randlicht);
-
-  /* Lichterkette am oberen Bogen — in der Vorlage ist sie das, was die
-     Nische warm macht. Die Punkte sitzen auf der Ellipse selbst, damit
-     sie der Rundung folgen statt auf einer Geraden zu hängen. */
-  for (let i = 0; i <= 14; i++){
-    const w = Math.PI + (i / 14) * Math.PI;      // oberer Halbkreis
-    const lx = Math.round(mx + Math.cos(w) * (rx - 3));
-    const ly = Math.round(my + Math.sin(w) * (ry - 3));
-    px(ctx, s, lx - 1, ly - 1, 3, 3, 'rgba(255,201,138,.30)');
-    px(ctx, s, lx, ly, 1, 1, (i % 3) ? NISCHE.warm : '#FFF0D0');
-  }
-
-  // Eine Hängepflanze, damit die Wand nicht leer bleibt.
-  const px0 = mx - Math.round(rx * 0.52), py0 = my - Math.round(ry * 0.10);
-  px(ctx, s, px0 - 4, py0, 9, 5, '#8A5B2E');
-  px(ctx, s, px0 - 5, py0 - 2, 11, 2, '#A9743E');
-  for (const [dx, dy, len] of [[-3, 5, 9], [0, 5, 13], [3, 5, 7], [-1, 5, 16]]){
-    for (let k = 0; k < len; k++)
-      px(ctx, s, px0 + dx + ((k % 4 < 2) ? 0 : 1), py0 + dy + k, 1, 1,
-         (k % 3) ? '#4BE38A' : '#2FB86A');
-  }
-
-  // Fenster links, Regal rechts — beide innerhalb der Nische.
-  const fb = Math.round(rx * 0.72), fh = Math.round(ry * 0.92);
-  const fx = mx - rx + Math.round(rx * 0.18), fy = my - ry + Math.round(ry * 0.22);
-  px(ctx, s, fx - 2, fy - 2, fb + 4, fh + 4, '#4A3A38');
-  maleStadt(ctx, s, fx, fy, fb, fh);
-  px(ctx, s, fx + Math.round(fb / 2), fy, 2, fh, '#4A3A38');
-  px(ctx, s, fx, fy + Math.round(fh / 2), fb, 2, '#4A3A38');
-  // Vorhang am rechten Fensterrand
-  px(ctx, s, fx + fb, fy - 2, 4, fh + 4, '#D8C3A5');
-  px(ctx, s, fx + fb + 1, fy - 2, 1, fh + 4, '#EFE0C8');
-
-  const gb = Math.round(rx * 0.62), gh = Math.round(ry * 0.78);
-  const gx = mx + Math.round(rx * 0.16), gy = my - ry + Math.round(ry * 0.26);
-  maleRegal(ctx, s, gx, gy, Math.min(gb, mx + rx - gx - 3), gh);
-
-  const bettUnten = unten - 4, bettRx = rx - 4;
-  maleKissenwand(ctx, s, mx, bettUnten, bettRx);
-  maleMatratze(ctx, s, mx, bettUnten, bettRx);
-  if (DATA.bella.ort === 'schlaf') maleBellaImBett(ctx, s, mx, bettUnten);
-
-  // Was aus der Post auf dem Bett liegt: rechts neben Bella, auf der
-  // Matratze, nicht in der Luft.
-  const abgelegt = DATA.raeume.schlaf.deko || [];
-  abgelegt.slice(0, 3).forEach((id, i) => {
-    const sp = KLEINKRAM[id];
-    if (!sp) return;
-    const x = mx + bettRx - 12 - i * 16;
-    maleFigur(ctx, s, id, sp, x - sp.b / 2, bettUnten - 10 - sp.h, null);
-  });
-
-  /* Der warme Lichtsaum unter der Nischenkante — in der Vorlage ist er
-     das, was den Raum gemütlich macht. Zwei Zeilen: die obere heller. */
-  px(ctx, s, mx - rx, unten, rx * 2, 1, NISCHE.warm);
-  px(ctx, s, mx - rx + 4, unten + 1, rx * 2 - 8, 1, NISCHE.glut);
-  // Der Teppich davor, angedeutet als flache Ellipse.
-  ellipse(ctx, s, mx, s.h - 3, Math.round(rx * 0.7), 4, '#4A3A42');
-  ellipse(ctx, s, mx, s.h - 4, Math.round(rx * 0.62), 3, '#5C4750');
-}
-
-/* ---------- Die Badeszene ----------
-   Auch hier nur die Wanne, herangezoomt: heller Raum, weiter Rand,
-   getöntes Wasser, Blasen. Was im Wasser ist, kommt aus dem Badezusatz;
-   was auf dem Rand steht, aus der Post. */
-
 function badFarben(){
   const z = BADEZUSAETZE[DATA.bad.zusatz] || BADEZUSAETZE.klar;
   return z;
 }
 
-function maleBadeszene(ctx, s){
+/* ---------- Schlafzimmer und Bad ----------
+   Beide waren vorher herangezoomte Ausschnitte: nur die Bettnische, nur
+   die Wanne. Seit "im Bild soll immer ein vollständiges Zimmer zu sehen
+   sein" sind es ganze Zimmer wie Küche, Wohnzimmer und Kleiderschrank —
+   mit denselben Wänden, demselben Boden, demselben Maßstab. Das Bett
+   und die Wanne sind darin Möbelstücke, und alles, was man mit ihnen
+   tun konnte, tut man weiter an ihnen. */
+
+/* Wo das Bett steht und wie hoch seine Liegefläche ist — daran hängen
+   Bella, die Decke und alles, was auf dem Bett liegt. */
+function bettMasse(s){
+  const bodenY = s.h - bodenbandCm(s);
+  const m = EINRICHTUNG.schlaf.find(e => e.s === 'bett');
+  const p = platzierenCm(m, s, bodenY, 'schlaf');
+  const b = breiteCm('bett', MOEBEL.bett), h = GROESSEN_CM.bett;
+  return { x: p.x, unten: p.unten, oben: p.unten - h, b, h, liege: p.unten - h + 8 };
+}
+
+function maleSchlafzimmer(ctx, s){
+  maleZimmer(ctx, s, 'schlaf', true);
+  const bett = bettMasse(s);
+  const stoff = stoffFarben();
+  const daheim = DATA.bella.ort === 'schlaf';
+  const schlaeft = daheim && DATA.bella.schlaeft;
+
+  if (schlaeft){
+    const lage = schlaflage();
+    const kopfX = bett.x + 18 + lage.dx;
+    /* Der Körper unter der Decke: ein flacher Hügel neben dem Kopf.
+       Unbedeckt ein Ton dunkler als das Laken, sonst läge da nur ein
+       Kopf auf dem Bett. */
+    const zu = DATA.bella.zugedeckt;
+    const koerperX = kopfX + 34;
+    const koerperB = bett.x + bett.b - 14 - koerperX;
+    mRund(ctx, s, koerperX, bett.liege - 6, koerperB, 18, 6,
+          zu ? stoff[1] : '#C9AD95');
+    mRund(ctx, s, koerperX + 2, bett.liege - 8, koerperB - 4, 12, 5,
+          zu ? stoff[0] : '#E0C7B0');
+    if (zu){
+      // Umgeschlagener Saum — daran sieht man, dass zugedeckt ist.
+      mFlaeche(ctx, s, koerperX, bett.liege - 9, 16, 5, stoff[0]);
+      mFlaeche(ctx, s, koerperX, bett.liege - 4, 16, 2, stoff[2]);
+      for (let i = 1; i < 4; i++)
+        mFlaeche(ctx, s, koerperX + i * (koerperB / 4), bett.liege - 6, 1.5, 16, stoff[2]);
+    }
+    if (!maleBildNachMass(ctx, s, 'bella_liegt', kopfX, bett.liege + 6))
+      maleBellaLiegend(ctx, s, kopfX, bett.liege - 28 + lage.dy, 48,
+                       GROESSEN_CM.bella_liegt, { haar: HAARFARBE, spiegel: lage.spiegel });
+  }
+
+  /* Kissen und Kuscheltiere aus der Post liegen am Kopfende auf dem
+     Bett, in ihrer wirklichen Größe. */
+  (DATA.raeume.schlaf.deko || []).slice(0, 3).forEach((id, i) => {
+    const cm = groesseCm(id) || 30;
+    const x = bett.x + 60 + i * (cm + 8);
+    if (x + cm > bett.x + bett.b - 10) return;
+    maleNachMass(ctx, s, id, KLEINKRAM[id], x, bett.liege + 4, null);
+  });
+
+  if (daheim && !schlaeft){
+    // Wach sitzt sie nicht im Bett, sondern steht davor.
+    const bodenY = s.h - bodenbandCm(s);
+    maleBellaStehend(ctx, s, Math.min(BELLA_STELLE.schlaf, s.b - bellaBreiteCm() - 6),
+                     bodenY + Math.round(bodenbandCm(s) * 0.5) + zappel(), stimmung());
+  }
+}
+
+/* Wo die Wanne steht — daran hängen Wasser, Schaum, Spielzeug und der
+   Duschkopf. */
+function wannenMasse(s){
+  const bodenY = s.h - bodenbandCm(s);
+  const m = EINRICHTUNG.bad.find(e => e.s === 'wanne');
+  const p = platzierenCm(m, s, bodenY, 'bad');
+  const b = breiteCm('wanne', MOEBEL.wanne), h = GROESSEN_CM.wanne;
+  return { x: p.x, unten: p.unten, oben: p.unten - h, b, h,
+           mx: p.x + b / 2, rand: p.unten - h + 4 };
+}
+
+function maleBadezimmer(ctx, s){
+  maleZimmer(ctx, s, 'bad', true);
   const z = badFarben();
-  const mx = Math.round(s.b / 2);
+  const w = wannenMasse(s);
+  const inDerWanne = DATA.bella.ort === 'bad';
 
-  px(ctx, s, 0, 0, s.b, s.h, '#EFEAF0');
-  // Fliesenfugen, nur angedeutet.
-  for (let y = 0; y < Math.round(s.h * 0.34); y += 9) px(ctx, s, 0, y, s.b, 1, '#E2DAE6');
-  for (let x = 0; x < s.b; x += 14) px(ctx, s, x, 0, 1, Math.round(s.h * 0.34), '#E2DAE6');
-
-  const wy = Math.round(s.h * 0.30);
-  const wb = s.b - 6, wh = s.h - wy - 2;
-  const rx = Math.round(wb / 2), ry = Math.round(wh / 2);
-  const my = wy + ry;
-
-  ellipse(ctx, s, mx, my, rx, ry, '#C9C2CE');
-  ellipse(ctx, s, mx, my - 1, rx - 1, ry - 1, '#FFFFFF');
-  ellipse(ctx, s, mx, my + 1, rx - 7, ry - 6, z.wasser[2]);
-  ellipse(ctx, s, mx, my, rx - 8, ry - 7, z.wasser[1]);
-  ellipse(ctx, s, mx, my - 1, rx - 10, ry - 9, z.wasser[0]);
+  // Wasser in der Wanne, in der Farbe des Badezusatzes.
+  const wx = w.x + 5, wb = w.b - 10;
+  const wy = w.rand + 4, wh = w.h - 12;
+  mRund(ctx, s, wx, wy, wb, wh, 6, z.wasser[2]);
+  mRund(ctx, s, wx + 2, wy, wb - 4, wh - 3, 5, z.wasser[1]);
+  mRund(ctx, s, wx + 4, wy, wb - 8, 6, 3, z.wasser[0]);
 
   /* Blasen: ein Ring in der Zusatzfarbe, innen heller, ein Glanzpunkt
      oben links. Kleine Tupfer allein sähen aus wie Schmutz. */
   const zufall = streuFolge('blasen' + DATA.bad.zusatz);
-  for (let i = 0; i < 14; i++){
-    const w = zufall() * Math.PI * 2, r = Math.sqrt(zufall());
-    const bx = mx + Math.round(Math.cos(w) * (rx - 16) * r);
-    const by = my + Math.round(Math.sin(w) * (ry - 14) * r);
-    const br = 3 + Math.round(zufall() * 4);
-    ellipse(ctx, s, bx, by, br, br, z.blase);
-    ellipse(ctx, s, bx, by, br - 1, br - 1, 'rgba(255,255,255,.55)');
-    ellipse(ctx, s, bx, by, br - 2, br - 2, z.blaseHell);
-    px(ctx, s, bx - br + 2, by - br + 2, 2, 1, '#FFFFFF');
-    px(ctx, s, bx - br + 1, by - br + 3, 1, 1, '#FFFFFF');
+  for (let i = 0; i < 16; i++){
+    const bx = wx + 4 + zufall() * (wb - 8);
+    const by = wy + 2 + zufall() * (wh - 6);
+    const br = 1.6 + zufall() * 2.6;
+    mKreis(ctx, s, bx, by, br, z.blase);
+    mKreis(ctx, s, bx, by, br - 0.5, 'rgba(255,255,255,.55)');
+    mKreis(ctx, s, bx, by, br - 1, z.blaseHell);
+    mFlaeche(ctx, s, bx - br + 0.6, by - br + 0.6, 0.9, 0.5, '#FFFFFF');
   }
 
   // Dampf über dem Wasser.
   const dampf = streuFolge('dampf');
   for (let i = 0; i < 3; i++){
-    let dx = mx - 16 + i * 16, dy = wy - 2;
-    for (let k = 0; k < 8; k++){
-      px(ctx, s, dx, dy - k * 3, 1, 2, 'rgba(255,255,255,.55)');
+    let dx = w.mx - 18 + i * 18, dy = w.rand - 2;
+    for (let k = 0; k < 9; k++){
+      mFlaeche(ctx, s, dx, dy - k * 3, 0.9, 1.8, 'rgba(255,255,255,.55)');
       dx += dampf() > .5 ? 1 : -1;
     }
   }
 
-  // Bella sitzt hinten in der Wanne, angelehnt — nicht mitten im Wasser.
-  const inDerWanne = DATA.bella.ort === 'bad';
-  const plaetze = outfitPlaetze();
-  const bx = mx - 12, by = my - ry + 6;
+  // Badespielzeug schwimmt auf dem Wasser.
+  (DATA.raeume.bad.deko || []).slice(0, 3).forEach((id, i) => {
+    const cm = groesseCm(id) || 10;
+    const x = wx + wb * 0.5 + i * 26 - cm / 2;
+    maleNachMass(ctx, s, id, KLEINKRAM[id], Math.min(x, wx + wb - cm - 4), wy + 5, null);
+  });
+
   if (inDerWanne){
-  maleFigur(ctx, s, 'bella_steht', bellaRaster().slice(0, KOPF_H), bx, by, plaetze);
-  maleFigur(ctx, s, '', GESICHTER[state.schaum ? 'froh' : stimmung()],
-             bx + GESICHT_X, by + GESICHT_Y, plaetze);
-  }
-  if (state.schaum && inDerWanne){
-    // Schaumhaube und Schaumkragen, damit man das Einschäumen sieht.
-    ellipse(ctx, s, mx, by + 1, 10, 5, '#FFFFFF');
-    ellipse(ctx, s, mx - 6, by - 1, 4, 3, '#FFFFFF');
-    ellipse(ctx, s, mx + 6, by - 1, 4, 3, '#FFFFFF');
-    ellipse(ctx, s, mx, by + 17, 13, 4, '#F4F0F8');
+    // Bella sitzt in der Wanne: Kopf und Schultern über dem Rand.
+    const kopfHoch = GROESSEN_CM.bella * 0.247;
+    const bx = w.mx - 13;
+    maleBellaStehend(ctx, s, bx, w.rand + 8, state.schaum ? 'froh' : stimmung(), true);
+    if (state.schaum){
+      // Schaumhaube und Schaumkragen, damit man das Einschäumen sieht.
+      mRund(ctx, s, bx - 2, w.rand + 8 - kopfHoch - 6, 30, 12, 6, '#FFFFFF');
+      mKreis(ctx, s, bx + 1, w.rand + 8 - kopfHoch - 6, 5, '#FFFFFF');
+      mKreis(ctx, s, bx + 25, w.rand + 8 - kopfHoch - 5, 4.5, '#FFFFFF');
+      mRund(ctx, s, bx - 6, w.rand + 4, 38, 8, 4, '#F4F0F8');
+    }
+    if (state.dusche) maleDusche(ctx, s, w.mx, w.rand + 8 - kopfHoch);
   }
 
-  if (state.dusche && inDerWanne) maleDusche(ctx, s, mx, by);
-
-  /* Was auf dem Rand steht, muss dem Bogen der Wanne folgen — sonst
-     schwebt die Kerze an der Wand. Die Höhe wird je Gegenstand aus der
-     Ellipse ausgerechnet. */
-  const randOben = x => {
-    const t = 1 - ((x - mx) / rx) * ((x - mx) / rx);
-    return t <= 0 ? my : my - Math.round(ry * Math.sqrt(t));
-  };
-  const rand = ['sp_kerze'].concat((DATA.raeume.bad.deko || []).slice(0, 3));
-  rand.forEach((id, i) => {
+  // Kerze und Fläschchen stehen auf dem Wannenrand.
+  ['sp_kerze'].forEach((id, i) => {
     const sp = KLEINKRAM[id];
     if (!sp) return;
-    const spanne = Math.round(rx * 1.3);
-    const x = mx - Math.round(spanne / 2)
-            + (rand.length > 1 ? Math.round(i * spanne / (rand.length - 1)) : Math.round(spanne / 2))
-            - Math.round(sp.b / 2);
-    maleFigur(ctx, s, id, sp, x, randOben(x + sp.b / 2) - sp.h + 3, null);
+    const cm = groesseCm(id) || 12;
+    maleNachMass(ctx, s, id, sp, w.x + w.b - 18 - i * 16, w.rand + 1, null);
   });
 }
 
@@ -1121,7 +1072,7 @@ function maleGross(ctx, s, platz, sprite, x, y, faktor){
   /* In den Kochkarten wird nicht nach Weltgröße gezeichnet, sondern
      nach Bildwirkung: Zutat und Gericht sind dort die Hauptsache. */
   const zug = s.mass * (faktor || 1);
-  if (BILDER[platz]){ maleBildNachMass(ctx, s, platz, x, y + (BILDER[platz].h / PX_JE_CM)); return; }
+  if (BILDER[platz]){ maleBildNachMass(ctx, s, platz, x, y + (BILDER[platz].h / MODELL_PX_JE_CM)); return; }
   if (!sprite) return;
   const rows = sprite.p || sprite;
   for (let j = 0; j < rows.length; j++)
@@ -1131,9 +1082,9 @@ function maleGross(ctx, s, platz, sprite, x, y, faktor){
       const farbe = PALETTE[ch];
       if (!farbe) continue;
       ctx.fillStyle = farbe;
-      ctx.fillRect(Math.round((x + i * (faktor || 1)) * PX_JE_CM),
-                   Math.round((y + j * (faktor || 1)) * PX_JE_CM),
-                   Math.ceil(PX_JE_CM * (faktor || 1)), Math.ceil(PX_JE_CM * (faktor || 1)));
+      ctx.fillRect(Math.round((x + i * (faktor || 1)) * s.mass),
+                   Math.round((y + j * (faktor || 1)) * s.mass),
+                   Math.ceil(s.mass * (faktor || 1)), Math.ceil(s.mass * (faktor || 1)));
     }
 }
 
@@ -1150,8 +1101,8 @@ function maleFigur(ctx, s, platz, raster, x, y, plaetze){
       const farbe = nr >= 0 ? (plaetze && plaetze[nr]) : PALETTE[ch];
       if (!farbe) continue;
       ctx.fillStyle = farbe;
-      ctx.fillRect(Math.round((x + i) * PX_JE_CM), Math.round((y + j) * PX_JE_CM),
-                   Math.ceil(PX_JE_CM), Math.ceil(PX_JE_CM));
+      ctx.fillRect(Math.round((x + i) * s.mass), Math.round((y + j) * s.mass),
+                   Math.ceil(s.mass), Math.ceil(s.mass));
     }
 }
 
@@ -1289,9 +1240,8 @@ function maleEssszene(ctx, s, rezept){
   const neigung = (takt === 1 || takt === 2) ? 1 : 0;
   const plaetze = outfitPlaetze();
   const bx = mitte - 12, by = unten - 30 + neigung;
-  maleFigur(ctx, s, 'bella_steht', bellaRaster().slice(0, 20), bx, by, plaetze);
-  maleFigur(ctx, s, '', GESICHTER[takt === 2 ? 'satt' : 'froh'],
-             bx + GESICHT_X, by + GESICHT_Y, plaetze);
+  const kopfHoch = GROESSEN_CM.bella * 0.247;
+  maleBellaStehend(ctx, s, bx, by + kopfHoch, takt === 2 ? 'satt' : 'froh', true);
 
   maleFigur(ctx, s, 'teller', KOCHZEUG.teller, mitte - 14, unten - 4, null);
   const farbe = zutatFarbe(rezept.aus[0]);
@@ -1312,12 +1262,12 @@ function maleEssszene(ctx, s, rezept){
    Browsers — in der Bühne gibt es kein DOM. */
 function schrift(ctx, s, text, y){
   ctx.save();
-  ctx.font = Math.round(7 * PX_JE_CM) + "px 'Silkscreen', monospace";
+  ctx.font = Math.round(7 * s.mass) + "px 'Silkscreen', monospace";
   ctx.textAlign = 'center';
   ctx.fillStyle = '#2B1B3D';
-  ctx.fillText(text, (s.b / 2) * PX_JE_CM + PX_JE_CM, y * PX_JE_CM + PX_JE_CM);
+  ctx.fillText(text, (s.b / 2) * s.mass + s.mass, y * s.mass + s.mass);
   ctx.fillStyle = '#F4EFE4';
-  ctx.fillText(text, (s.b / 2) * PX_JE_CM, y * PX_JE_CM);
+  ctx.fillText(text, (s.b / 2) * s.mass, y * s.mass);
   ctx.restore();
 }
 
@@ -1330,8 +1280,8 @@ function maleKochszene(ctx, s){
 
 function maleRaum(ctx, s, jetzt){
   if (state.szene && state.szene.art === 'kochen'){ maleKochszene(ctx, s); return; }
-  if (state.raum === 'schlaf') maleSchlafnische(ctx, s);
-  else if (state.raum === 'bad') maleBadeszene(ctx, s);
+  if (state.raum === 'schlaf') maleSchlafzimmer(ctx, s);
+  else if (state.raum === 'bad') maleBadezimmer(ctx, s);
   else maleZimmer(ctx, s, state.raum);
 }
 
@@ -1492,7 +1442,7 @@ function zeichnen(){
   /* Die Rückseite des Canvas läuft in **Gerätepunkten**, die Anzeige in
      CSS-Punkten. Nur so steht der Detailgrad zur Verfügung, den die
      gelieferten Grafiken haben. */
-  const bp = Math.round(s.b * PX_JE_CM), hp = Math.round(s.h * PX_JE_CM);
+  const bp = s.leinwandB, hp = s.leinwandH;
   if (c.width !== bp || c.height !== hp){
     c.width = bp; c.height = hp;
     c.style.width = s.breiteCss + 'px';

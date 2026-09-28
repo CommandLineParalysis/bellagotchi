@@ -1,80 +1,82 @@
 # Eigene Pixelgrafiken einsetzen
 
-Jede Grafik im Spiel hat einen **Platz**. Die Plätze stehen in
-`www/js/bilder.js` unter `BILDPLAETZE`.
+## Die eine Regel
 
-Eine eigene Grafik einzusetzen heißt:
+**5,6 Bildpunkte je Zentimeter.**
 
-1. PNG mit Transparenz in diesen Ordner legen, benannt wie der Platz
-   (`bella_steht.png`, `szene_wanne.png`, `gericht_pfannkuchen.png` …).
-2. In `BILDPLAETZE` den Dateinamen eintragen: `bella_steht: 'bilder/bella_steht.png'`.
+Geeicht ist das an deiner Pflanze: 140 Punkte hoch, in Wirklichkeit
+25 cm. 140 ÷ 25 = 5,6. Alles andere folgt daraus.
 
-Mehr passiert nicht. Die Datei wird **unverändert** gezeichnet: keine
-Palette, kein Umfärben, kein Zuschnitt, keine Glättung. Vergrößert wird
-nur um ganze Vielfache, damit ein gemalter Pixel ein Pixel bleibt.
+Ein Herd ist 85 cm hoch, also **476 Punkte** — mehr als das Dreifache der
+Pflanze. Ein Kühlschrank 170 cm, also **952 Punkte**. Bella genauso.
 
-## Maßstab
+Das ist die Auflösung, in der du malst. Sie hat nichts damit zu tun, wie
+viele Punkte das Handy gerade zeigt.
 
-Geeicht wird an der ersten gelieferten Grafik: die Pflanze ist in
-Wirklichkeit **25 cm** hoch und **140 Bildpunkte** groß.
+## Warum das Handy weniger zeigt
 
-    140 Punkte / 25 cm = 5,6 Punkte je Zentimeter
+Im Bild steht immer ein ganzes Zimmer: 340 cm breit. Ein Handy mit
+390 CSS-Punkten und dreifacher Dichte hat dafür 1170 echte Bildpunkte.
 
-Gezeichnet wird in **Gerätepunkten**, nicht in CSS-Punkten — ein Handy
-hat bei gleicher Fläche das Zwei- bis Dreifache an echten Bildpunkten,
-und genau diese Reserve braucht dieser Detailgrad. Bei dreifacher Dichte
-zeigt die Bühne rund **209 × 226 cm** Zimmer.
+    1170 Punkte ÷ 340 cm = 3,44 Punkte je Zentimeter
 
-## Größen
+Die Pflanze erscheint dort also 86 Punkte hoch statt 140. Ihre 140
+gemalten Zeilen stecken alle in der Datei; das Gerät zeigt 61 % davon.
+Auf einem Tablet oder einem dichteren Bildschirm wird mehr davon
+sichtbar. Male deshalb immer in 5,6 — nie in dem, was das Handy zeigt.
 
-Jede Grafik hat eine wirkliche Größe in Zentimetern; sie steht in
-`www/js/massstab.js` unter `GROESSEN_CM`. Daraus ergibt sich, wie viele
-Punkte sie haben soll:
+## So setzt du eine Grafik ein
 
-| Ding | wirklich | Punkte (Höhe) |
-|---|---|---|
-| Bella | 170 cm | 952 |
-| Pflanze (gegeben) | 25 cm | 140 |
-| Kühlschrank | 170 cm | 952 |
-| Schrank | 190 cm | 1064 |
-| Regal | 180 cm | 1008 |
-| Fenster | 110 cm | 616 |
-| Tisch | 75 cm | 420 |
-| Sofa | 80 cm | 448 |
-| Kuscheltier | 24–34 cm | 134–190 |
-| Badeente | 9 cm | 50 |
+1. Datei als PNG mit durchsichtigem Hintergrund speichern.
+2. Unter dem Namen des Platzes nach `www/bilder/` legen,
+   z. B. `www/bilder/herd.png`.
+3. In `www/js/bilder.js` bei diesem Platz den Dateinamen eintragen.
 
-Ist eine gelieferte Datei größer oder kleiner als ihre Eintragung, sagt
-`massPruefen()` die Abweichung in Prozent — das fällt dann auf, statt
-dass das Ding stillschweigend zu groß im Zimmer steht.
+Die Datei wird **nicht verändert**: nicht umgefärbt, nicht zugeschnitten,
+nicht geglättet. Sie wird nur auf ihre eingetragene Größe in Zentimetern
+gebracht — sonst stünde ein 476 Punkte hoher Herd in einem Zimmer, das
+3,44 Punkte je Zentimeter zeigt, viermal zu groß da.
 
-## Genau platzieren
+Stimmt die Höhe der Datei nicht mit der Eintragung überein, sagt
+`massPruefen` die Abweichung in Prozent.
 
-Im Spiel: **Stift** oben rechts → **GENAU PLATZIEREN**. Dort einen
-Gegenstand wählen, dann auf das Bild tippen — dorthin kommt seine
-Unterkante, mittig unter den Finger. Die vier Pfeile schieben um einen
-Zentimeter. **ZAHLEN ZEIGEN** gibt alles als JSON aus; schick es mir,
-dann trage ich die Plätze fest ein. **ZURÜCKSETZEN** stellt die
-Voreinstellung wieder her.
+## Die Maße
 
-## Alte Größenangaben
+| Platz | Höhe | Breite | Datei muss sein |
+|---|---|---|---|
+| `deko_pflanze` | 25 cm | 21 cm | 140 px hoch × 118 px breit |
+| `teller` | 4 cm | frei | 22 px hoch |
+| `schwamm` | 9 cm | frei | 50 px hoch |
+| `hand_dusche` | 22 cm | frei | 123 px hoch |
+| `sp_ente` | 9 cm | frei | 50 px hoch |
+| `ku_baer` | 30 cm | frei | 168 px hoch |
+| `kissen_a` | 35 cm | frei | 196 px hoch |
+| `stange` | 40 cm | 120 cm | 224 px hoch × 672 px breit |
+| `wanne` | 55 cm | 150 cm | 308 px hoch × 840 px breit |
+| `bett` | 55 cm | 200 cm | 308 px hoch × 1120 px breit |
+| `nachttisch` | 55 cm | 45 cm | 308 px hoch × 252 px breit |
+| `pflanze` | 60 cm | 45 cm | 336 px hoch × 252 px breit |
+| `tisch` | 75 cm | 120 cm | 420 px hoch × 672 px breit |
+| `sofa` | 80 cm | 180 cm | 448 px hoch × 1008 px breit |
+| `herd` | 85 cm | 60 cm | 476 px hoch × 336 px breit |
+| `waschbecken` | 85 cm | 55 cm | 476 px hoch × 308 px breit |
+| `spiegel` | 90 cm | 60 cm | 504 px hoch × 336 px breit |
+| `fenster` | 110 cm | 90 cm | 616 px hoch × 504 px breit |
+| `lampe` | 150 cm | 40 cm | 840 px hoch × 224 px breit |
+| `kuehlschrank` | 170 cm | 60 cm | 952 px hoch × 336 px breit |
+| `bella` | 170 cm | 46 cm | 952 px hoch × 258 px breit |
+| `regal` | 180 cm | 90 cm | 1008 px hoch × 504 px breit |
+| `schrank` | 190 cm | 110 cm | 1064 px hoch × 616 px breit |
 
+Steht bei der Breite **frei**, richtet sie sich nach dem
+Seitenverhältnis deiner Datei — die Höhe entscheidet.
 
+Die Zentimeter stehen in `www/js/massstab.js` unter `GROESSEN_CM` und
+`BREITEN_CM`. Soll etwas größer oder kleiner sein, ändert sich dort die
+Zahl, nicht die Datei.
 
-Gerechnet wird in **Spielpixeln**, nicht in Bildschirmpunkten. Die Bühne
-ist je nach Gerät etwa 110–200 Spielpixel breit und 90–140 hoch.
+## Wo etwas steht
 
-| Art | Empfohlene Größe |
-|---|---|
-| Ganze Szene (`szene_*`) | 160 × 120 |
-| Bella stehend | 24 × 32 |
-| Bella liegend | 24 × 12 |
-| Möbelstück | 14–44 breit |
-| Kleinkram (Kissen, Spielzeug) | 10–16 |
-| Gericht (`gericht_*`) | 24 × 18 |
-| Zutat (`zutat_*`) | 12 × 12 |
-
-Ein Szenenbild ersetzt den gezeichneten Hintergrund vollständig; Bella
-und die Gegenstände werden darüber gelegt. Wo sie sitzen, steht in
-`ANKER` als Anteil der Bühne — das lässt sich zu einem gelieferten Bild
-passend verschieben.
+Im Spiel: Stift oben rechts → **Gegenstände setzen**. Antippen wählt
+aus, die Pfeile verschieben auf den Zentimeter genau, **Werte ausgeben**
+schreibt die Stellen als JSON heraus.

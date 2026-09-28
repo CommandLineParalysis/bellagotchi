@@ -26,7 +26,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'BODENFARBEN','alleGaben','KLEIDUNG','FRISUREN','HAARFARBE',
                      'SCHLAFLAGEN','schlaflage','rufKnopf','ESSEN_DAUER','bellaRaster',
                      'KOPF_H','KOERPER_H','SCHUHE','ACCESSOIRES','ZUBEHOER',
-                     'PX_JE_CM','GROESSEN_CM','punkte','zentimeter','massPruefen',
+                     'MODELL_PX_JE_CM','GROESSEN_CM','BREITEN_CM','ZIMMER','sollPunkte','massPruefen',
+                     'moebelDa','MOEBELBILD','maleBellaFigur','maleBellaLiegend',
                      'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
@@ -497,12 +498,55 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   /* --- Maßstab --- */
 
-  await p.check('Der Maßstab kommt aus der Pflanze', () => {
-    if (Math.abs(T.PX_JE_CM - 140 / 25) > 0.001)
-      throw new Error('Maßstab: ' + T.PX_JE_CM);
-    if (T.punkte(25) !== 140) throw new Error('25 cm sind ' + T.punkte(25) + ' Punkte');
+  await p.check('Die Modellauflösung kommt aus der Pflanze', () => {
+    if (Math.abs(T.MODELL_PX_JE_CM - 140 / 25) > 0.001)
+      throw new Error('Modellauflösung: ' + T.MODELL_PX_JE_CM);
+    if (T.sollPunkte(25) !== 140) throw new Error('25 cm sind ' + T.sollPunkte(25) + ' Punkte');
     if (T.GROESSEN_CM.deko_pflanze !== 25) throw new Error('die Pflanze ist nicht mit 25 cm eingetragen');
-    return T.PX_JE_CM + ' Punkte je cm';
+    return T.MODELL_PX_JE_CM + ' Punkte je cm im Modell';
+  });
+
+  /* Der Kern der Eichung: die Höhe in Punkten muss dem Verhältnis der
+     Zentimeter folgen. Ein Herd ist mehr als doppelt so hoch wie die
+     Pflanze, also braucht er mehr als die doppelte Punktzahl. */
+  await p.check('Ein Herd besteht aus mehr als der doppelten Punkthöhe der Pflanze', () => {
+    const pflanze = T.sollPunkte(T.GROESSEN_CM.deko_pflanze);
+    const herd = T.sollPunkte(T.GROESSEN_CM.herd);
+    if (!(herd > 2 * pflanze))
+      throw new Error('Herd ' + herd + ' Punkte, Pflanze ' + pflanze + ' Punkte');
+    const paare = [['kuehlschrank', 'herd'], ['schrank', 'nachttisch'], ['bella', 'wanne']];
+    paare.forEach(([gross, klein]) => {
+      const vg = T.sollPunkte(T.GROESSEN_CM[gross]) / T.sollPunkte(T.GROESSEN_CM[klein]);
+      const vcm = T.GROESSEN_CM[gross] / T.GROESSEN_CM[klein];
+      if (Math.abs(vg - vcm) > 0.02)
+        throw new Error(gross + '/' + klein + ': Punkte ' + vg.toFixed(2) + ', cm ' + vcm.toFixed(2));
+    });
+    return 'Pflanze ' + pflanze + ', Herd ' + herd + ' Punkte';
+  });
+
+  /* Das Zimmer muss ganz ins Bild. Die Anzeigedichte ist deshalb das
+     Ergebnis der Leinwandbreite, nicht eine feste Zahl — genau der
+     Fehler, an dem die Zimmer vorher immer enger wurden. */
+  await p.check('Ein ganzes Zimmer steht im Bild', () => {
+    const s = T.buehneMasse();
+    if (s.b !== T.ZIMMER.breiteCm)
+      throw new Error('Bühne ist ' + s.b + ' cm breit statt ' + T.ZIMMER.breiteCm);
+    if (Math.abs(s.b * s.mass - s.leinwandB) > 1)
+      throw new Error('Zimmerbreite füllt die Leinwand nicht: ' + (s.b * s.mass) + ' von ' + s.leinwandB);
+    if (!(s.b >= 300)) throw new Error('Zimmer zu schmal: ' + s.b + ' cm');
+    // Bella muss hineinpassen, mit Boden darunter.
+    if (!(s.h > T.GROESSEN_CM.bella + 20))
+      throw new Error('Zimmer zu flach: ' + s.h + ' cm');
+    return s.b + ' × ' + s.h.toFixed(0) + ' cm auf ' + s.leinwandB + ' × ' + s.leinwandH
+         + ' Punkten (' + s.mass.toFixed(2) + ' Punkte je cm)';
+  });
+
+  await p.check('Die Möbel sind gezeichnet, nicht aus Rastern gezogen', () => {
+    const ohne = ['fenster','herd','kuehlschrank','tisch','sofa','regal','pflanze',
+                  'wanne','waschbecken','spiegel','schrank','stange','bett','nachttisch','lampe']
+                 .filter(n => !T.moebelDa(n));
+    if (ohne.length) throw new Error('ohne Zeichnung: ' + ohne.join(', '));
+    return Object.keys(T.MOEBELBILD).length + ' Zeichnungen';
   });
 
   await p.check('Bella ist siebenmal so hoch wie die Pflanze', () => {
@@ -525,14 +569,32 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   await p.check('Bella passt auf die Bühne, der Boden weicht', () => {
     /* Der Boden darf nie so breit sein, dass Bella oben herausragt —
        und nie ganz verschwinden. */
-    const faelle = [{ b: 209, h: 226 }, { b: 140, h: 190 }, { b: 300, h: 400 }];
+    const faelle = [{ h: 226 }, { h: 190 }, { h: 400 }, { h: 344 }];
     const werte = faelle.map(f => {
       const band = T.bodenbandCm(f);
-      if (band > T.GROESSEN_CM.bella ? false : f.h - band < T.GROESSEN_CM.bella)
+      if (f.h - band < T.GROESSEN_CM.bella)
         throw new Error('Bella ragt heraus bei ' + f.h + ' cm Bühne');
       if (band < 12) throw new Error('der Boden verschwindet: ' + band);
-      if (band > 45) throw new Error('der Boden ist breiter als erlaubt: ' + band);
+      if (band > T.ZIMMER.bodenMaxCm)
+        throw new Error('der Boden ist breiter als erlaubt: ' + band);
       return f.h + ' cm → ' + band;
+    });
+    return werte.join(' · ');
+  });
+
+  /* Auf einem flachen Bildschirm muss der Ausschnitt breiter werden,
+     sonst wäre das Zimmer niedriger als Bella. */
+  await p.check('Auf jedem Bildschirmformat bleibt ein ganzes Zimmer im Bild', () => {
+    const formate = [[380, 420], [320, 300], [800, 320], [1200, 900]];
+    const werte = formate.map(([b, h]) => {
+      const form = h / b;
+      const breite = Math.max(T.ZIMMER.breiteCm,
+                              Math.ceil((T.GROESSEN_CM.bella + T.ZIMMER.bodenMinCm + 12) / form));
+      const hoehe = breite * form;
+      if (hoehe - T.bodenbandCm({ h: hoehe }) < T.GROESSEN_CM.bella)
+        throw new Error(b + '×' + h + ': Bella passt nicht');
+      if (breite < 300) throw new Error(b + '×' + h + ': nur ' + breite + ' cm Zimmer');
+      return b + '×' + h + ' → ' + breite + ' cm';
     });
     return werte.join(' · ');
   });
