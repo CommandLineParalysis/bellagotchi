@@ -45,9 +45,15 @@ function sollPunkte(cm){ return Math.round(cm * MODELL_PX_JE_CM); }
    Möbelstück auf jedem Gerät gleich groß im Zimmer sitzt. */
 const ZIMMER = {
   breiteCm: 340,
-  /* Wie viel vom Bild Fußboden ist. Ein breites Band davon liest sich
-     als Tiefe; zu viel davon drückt die Wand zusammen. */
-  bodenAnteil: 0.26, bodenMinCm: 40, bodenMaxCm: 95,
+  /* Wie viel vom Bild Fußboden ist — eine feste Zahl, keine Quote.
+     Daran hängt die Bodenlinie, und auf der stehen Möbel und Bella.
+     Wanderte sie je nach Gerät, könnte ein gemalter Boden nie sitzen:
+     auf dem einen Handy läge er zu hoch, auf dem anderen zu tief. */
+  bodenCm: 100,
+  /* So hoch muss eine gemalte Wand mindestens sein. Zeigt ein Gerät
+     mehr Wand, wird die oberste Zeile des Bildes fortgesetzt — bei
+     einer gemalten Wand sieht man davon nichts. */
+  wandCm: 275,
 };
 
 /* Wie hoch die Dinge wirklich sind, in Zentimetern — und wie breit.

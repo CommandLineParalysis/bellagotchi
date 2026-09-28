@@ -75,6 +75,41 @@ Die Zentimeter stehen in `www/js/massstab.js` unter `GROESSEN_CM` und
 `BREITEN_CM`. Soll etwas größer oder kleiner sein, ändert sich dort die
 Zahl, nicht die Datei.
 
+## Wände und Böden
+
+Es gibt **keinen** Hintergrund pro Zimmer. Wand und Boden sind zwei
+getrennte Sachen, damit du sie weiter einzeln wechseln kannst — eine
+gemalte Wand ersetzt die gewählte Tapete, ein gemalter Boden den
+gewählten Boden, und beides bleibt unabhängig umschaltbar.
+
+Die Plätze heißen wie die Auswahl im Spiel:
+
+| | Plätze |
+|---|---|
+| Tapeten | `wand_rosa`, `wand_himmel`, `wand_minze`, `wand_butter`, `wand_flieder`, `wand_pfefferm` |
+| Böden | `boden_eiche`, `boden_kirsch`, `boden_perle`, `boden_wiese`, `boden_beere`, `boden_see` |
+
+Zwei Arten von Datei, die App unterscheidet sie an der Breite:
+
+| Art | Breite | wie sie gesetzt wird |
+|---|---|---|
+| **Kachel** | schmaler als 1904 px | wiederholt sich, von der Bodenlinie aus. Für Tapetenmuster und Dielen. Empfohlen: **336 × 336 px** (60 × 60 cm), nahtlos. |
+| **Bahn** | genau **1904 px** | wird einmal gesetzt, am Boden verankert. Für gemalte Wände mit Motiv. Wand: **1904 × 1540 px**, Boden: **1904 × 560 px**. |
+
+Malst du eine Bahn kürzer als nötig, wird ihre **oberste Zeile nach oben
+fortgesetzt** — es entsteht nie eine Lücke, und bei einer gleichmäßigen
+Wandoberkante sieht man davon nichts. Dasselbe gilt seitlich.
+
+Liegt für die gewählte Tapete oder den gewählten Boden eine Datei, fallen
+dort Farbe und Muster weg. Für alles andere bleibt es beim Gezeichneten.
+
+### Vorlagen
+
+In `vorlagen/` liegen leere Dateien in genau diesen Maßen, dazu je eine
+Übersicht pro Zimmer: sie zeigt die Bodenlinie, das Zentimeterraster und
+wo welches Möbelstück steht. Zum Draufschauen beim Malen, nicht zum
+Mitspeichern.
+
 ## Zutaten, Snacks und Gerichte
 
 Die stehen nicht im Zimmer, sondern in den Listen (Vorrat, Kochen,

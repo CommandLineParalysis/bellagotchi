@@ -31,7 +31,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'SZENE_CM','szenenMasse','nischeMasse','wanneMasse',
                      'planschStarten','planschAnteil','PLANSCH_DAUER','lichtAn',
                      'erholungJetzt','ERHOLUNG','ERHOLUNG_HELL',
-                     'vaultPayload','persist','listenBild',
+                     'vaultPayload','persist','listenBild','WANDFARBEN','BODENFARBEN','maleFlaeche',
                      'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
@@ -463,6 +463,37 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   });
 
   /* --- Bildplätze für Vorrat und Snacks --- */
+
+  /* --- Gemalte Wände und Böden --- */
+
+  await p.check('Jede Tapete und jeder Boden hat einen eigenen Bildplatz', () => {
+    const fehlt = [];
+    Object.keys(T.WANDFARBEN).forEach(w => { if (!('wand_' + w in T.BILDPLAETZE)) fehlt.push('wand_' + w); });
+    Object.keys(T.BODENFARBEN).forEach(b => { if (!('boden_' + b in T.BILDPLAETZE)) fehlt.push('boden_' + b); });
+    if (fehlt.length) throw new Error('ohne Platz: ' + fehlt.join(', '));
+    /* Getrennte Plätze sind der Kern: ein gemaltes Zimmer als ein Stück
+       würde bedeuten, dass Wand und Boden nicht mehr einzeln wechselbar
+       sind. */
+    const wandPlaetze = Object.keys(T.BILDPLAETZE).filter(k => k.startsWith('wand_'));
+    const bodenPlaetze = Object.keys(T.BILDPLAETZE).filter(k => k.startsWith('boden_'));
+    if (wandPlaetze.some(w => bodenPlaetze.includes(w)))
+      throw new Error('Wand und Boden teilen sich einen Platz');
+    return wandPlaetze.length + ' Tapeten, ' + bodenPlaetze.length + ' Böden, getrennt';
+  });
+
+  await p.check('Die Bodenlinie liegt auf jedem Gerät gleich', () => {
+    const werte = [{ h: 300 }, { h: 344 }, { h: 368 }, { h: 378 }, { h: 420 }]
+      .map(f => T.bodenbandCm(f));
+    if (new Set(werte).size !== 1)
+      throw new Error('das Bodenband wandert: ' + werte.join(', '));
+    if (werte[0] !== T.ZIMMER.bodenCm)
+      throw new Error('Bodenband ' + werte[0] + ' statt ' + T.ZIMMER.bodenCm);
+    // Bella muss über der Linie noch Platz haben.
+    const s = T.buehneMasse();
+    if (s.h - T.bodenbandCm(s) < T.GROESSEN_CM.bella)
+      throw new Error('über der Bodenlinie bleiben nur ' + (s.h - T.bodenbandCm(s)) + ' cm');
+    return T.ZIMMER.bodenCm + ' cm Boden, ' + (s.h - T.ZIMMER.bodenCm).toFixed(0) + ' cm Wand darüber';
+  });
 
   await p.check('Jede Zutat und jeder Snack hat einen Bildplatz', () => {
     const fehlt = [];

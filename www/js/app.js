@@ -488,7 +488,7 @@ function buehneMasse(){
      nicht: das Zimmer wäre dann niedriger als Bella. Dann wird der
      Ausschnitt breiter — mehr Zimmer statt abgeschnittener Bella. */
   const form = leinwandH / leinwandB;
-  const noetig = Math.ceil((BELLA_CM + ZIMMER.bodenMinCm + 12) / form);
+  const noetig = Math.ceil((BELLA_CM + ZIMMER.bodenCm + 12) / form);
   const b = Math.max(ZIMMER.breiteCm, noetig);
   const mass = leinwandB / b;
   return {
@@ -598,6 +598,63 @@ function breiteCm(name, raster){
   const rows = Array.isArray(raster) ? raster : (raster && raster.p);
   if (!rows || !rows.length || !cm) return 0;
   return +(cm * rows[0].length / rows.length).toFixed(1);
+}
+
+/* ---------- Gemalte Wände und Böden ----------
+   Wand und Boden bleiben zwei getrennte Sachen, die man einzeln wechselt
+   — deshalb gibt es keinen einen Zimmer-Hintergrund, sondern je ein Bild
+   für die gewählte Tapete und eins für den gewählten Boden. Wer in den
+   Einstellungen die Tapete tauscht, tauscht damit auch das gemalte Bild.
+
+   Zwei Arten von Datei, unterschieden an ihrer eigenen Breite:
+
+     Bahn    so breit wie das Zimmer (1904 Punkte). Wird einmal gesetzt,
+             am Boden verankert. Zeigt das Gerät mehr Wand, als die Bahn
+             hoch ist, wird die oberste Zeile fortgesetzt; dasselbe zur
+             Seite. Für gemalte Wände mit Motiv.
+     Kachel  schmaler. Wird wiederholt, von der Bodenlinie aus gesetzt,
+             damit die Fuge dort sitzt und nicht irgendwo. Für Tapeten
+             und Dielen.
+
+   Nichts wird verzerrt und nichts umgefärbt: eine Datei wird nur auf
+   ihre Zentimeter gebracht. */
+function maleFlaeche(ctx, s, platz, xCm, yCm, bCm, hCm, vonUnten){
+  const b = BILDER[platz];
+  if (!b || !ctx.drawImage || !ctx.save) return false;
+  const p = v => Math.round(v * s.mass);
+  const x0 = p(xCm), y0 = p(yCm), x1 = p(xCm + bCm), y1 = p(yCm + hCm);
+  if (!(x1 > x0) || !(y1 > y0)) return false;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0, y0, x1 - x0, y1 - y0);
+  ctx.clip();
+
+  const eigenBreiteCm = b.b / MODELL_PX_JE_CM;
+  if (eigenBreiteCm >= ZIMMER.breiteCm - 2){
+    // Bahn: in Zimmerbreite, mittig, am gewünschten Rand verankert.
+    const zb = p(ZIMMER.breiteCm) - p(0);
+    const zh = Math.max(1, Math.round(b.h * zb / b.b));
+    const zx = x0 + Math.round(((x1 - x0) - zb) / 2);
+    const zy = vonUnten ? y1 - zh : y0;
+    ctx.drawImage(b.el, zx, zy, zb, zh);
+    // Ränder fortsetzen, damit nie eine Lücke steht.
+    if (zy > y0)      ctx.drawImage(b.el, 0, 0,       b.b, 1, zx, y0, zb, zy - y0);
+    if (zy + zh < y1) ctx.drawImage(b.el, 0, b.h - 1, b.b, 1, zx, zy + zh, zb, y1 - (zy + zh));
+    if (zx > x0)      ctx.drawImage(b.el, 0, 0,       1, b.h, x0, zy, zx - x0, zh);
+    if (zx + zb < x1) ctx.drawImage(b.el, b.b - 1, 0, 1, b.h, zx + zb, zy, x1 - (zx + zb), zh);
+  } else {
+    // Kachel: wiederholt, ausgerichtet an der Kante, die zählt.
+    const kb = Math.max(1, Math.round(eigenBreiteCm * s.mass));
+    const kh = Math.max(1, Math.round((b.h / MODELL_PX_JE_CM) * s.mass));
+    const start = vonUnten ? y1 - kh : y0;
+    const schritt = vonUnten ? -kh : kh;
+    for (let yy = start; vonUnten ? yy + kh > y0 : yy < y1; yy += schritt)
+      for (let xx = x0; xx < x1; xx += kb)
+        ctx.drawImage(b.el, xx, yy, kb, kh);
+  }
+  ctx.restore();
+  return true;
 }
 
 /* Wand- und Bodenmuster kacheln. Ein Motiv ist rund 12 cm groß. */
@@ -735,11 +792,12 @@ function rahmenUm(ctx, s, name, sprite, p, gewaehlt){
    dass Bella oben aus dem Bild ragt. Auf einem Gerät mit wenig
    Punktdichte bleibt weniger Zimmer übrig, und dann weicht der Boden. */
 function bodenbandCm(s){
-  /* Der Boden bekommt seinen Anteil — weicht aber, bevor Bella oben
-     aus dem Bild ragt. */
+  /* Feste Höhe, damit die Bodenlinie auf jedem Gerät an derselben
+     Stelle im Zimmer liegt. Nur wenn die Bühne so flach wäre, dass
+     Bella nicht mehr hineinpasst, weicht der Boden — das kann nach der
+     Rechnung in buehneMasse nicht vorkommen, steht aber als Netz da. */
   const platz = Math.max(12, s.h - GROESSEN_CM.bella - 12);
-  const wunsch = Math.min(ZIMMER.bodenMaxCm, Math.round(s.h * ZIMMER.bodenAnteil));
-  return Math.max(12, Math.min(wunsch, platz));
+  return Math.min(ZIMMER.bodenCm, platz);
 }
 
 /* Wo die Möbel stehen: `x` in Zentimetern vom genannten Rand, `wand`
@@ -784,10 +842,17 @@ function maleZimmer(ctx, s, raum, ohneBella){
   const f = raumFarben(raum);
   const bodenY = s.h - bodenbandCm(s);
 
+  /* Erst die gemalte Datei, sonst Farbe und Muster. Wand und Boden
+     einzeln, damit man beide weiter getrennt wechseln kann. */
+  const r = DATA.raeume[raum];
   px(ctx, s, 0, 0, s.b, s.h, f.wand[0]);
-  maleKachelCm(ctx, s, f.wandmuster, 0, 0, s.b, bodenY, f.wand);
-  maleKachelCm(ctx, s, f.bodenmuster, 0, bodenY, s.b, s.h - bodenY, f.boden);
-  px(ctx, s, 0, bodenY - 3, s.b, 3, PALETTE.K);
+  const gemalteWand = maleFlaeche(ctx, s, 'wand_' + r.wand, 0, 0, s.b, bodenY, true);
+  if (!gemalteWand) maleKachelCm(ctx, s, f.wandmuster, 0, 0, s.b, bodenY, f.wand);
+  const gemalterBoden = maleFlaeche(ctx, s, 'boden_' + r.boden, 0, bodenY, s.b, s.h - bodenY, false);
+  if (!gemalterBoden) maleKachelCm(ctx, s, f.bodenmuster, 0, bodenY, s.b, s.h - bodenY, f.boden);
+  /* Die dunkle Kante zwischen Wand und Boden nur, wo nichts Gemaltes
+     liegt — über einem eigenen Bild wäre sie ein fremder Strich. */
+  if (!gemalteWand && !gemalterBoden) px(ctx, s, 0, bodenY - 3, s.b, 3, PALETTE.K);
 
   const stoff = stoffFarben();
   EINRICHTUNG[raum].forEach(m => {
@@ -2654,6 +2719,11 @@ function navBauen(){
 /* Jede Zutat und jedes Gericht bekommt seinen Bildplatz, damit ein
    neues Rezept nicht an zwei Stellen eingetragen werden muss. */
 function bildplaetzeAnmelden(){
+  /* Je Tapete und je Boden ein Platz: eine gemalte Wand ersetzt die
+     gewählte Tapete, nicht das ganze Zimmer — sonst ließen sich Wand
+     und Boden nicht mehr einzeln wechseln. */
+  Object.keys(WANDFARBEN).forEach(w => bildplatzAnlegen('wand_' + w));
+  Object.keys(BODENFARBEN).forEach(b => bildplatzAnlegen('boden_' + b));
   Object.keys(ZUTATEN).forEach(z => bildplatzAnlegen('zutat_' + z));
   Object.keys(SNACKS).forEach(sn => bildplatzAnlegen('snack_' + sn));
   REZEPTE.forEach(r => bildplatzAnlegen('gericht_' + r.id));
