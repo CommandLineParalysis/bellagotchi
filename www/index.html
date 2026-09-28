@@ -19,19 +19,20 @@
         <span class="herz" aria-hidden="true"></span><span class="zahl" id="wohlzahl">0</span>
       </button>
       <button class="iconbtn" id="postbtn" aria-label="Briefkasten">✉<span class="punkt" id="postpunkt" hidden></span></button>
+      <button class="iconbtn" id="einrichtenbtn" aria-label="Zimmer einrichten">✎</button>
       <button class="iconbtn" id="settingsbtn" aria-label="Einstellungen">≡</button>
     </div>
   </header>
 
+  <!-- Obere Hälfte: nur das Spiel. -->
+  <div class="buehne" id="buehne">
+    <canvas id="bild" aria-label="Bellas Zimmer"></canvas>
+    <div class="blase" id="blase" hidden></div>
+  </div>
+
+  <!-- Untere Hälfte: alles, was man anfassen kann. -->
   <main id="main">
-    <div class="geraet">
-      <div class="marke">BELLA&nbsp;<span>v1</span></div>
-      <div class="schirmrahmen">
-        <canvas id="bild" width="256" height="192" aria-label="Bellas Zimmer"></canvas>
-        <div class="blase" id="blase" hidden></div>
-      </div>
-      <div class="tasten" id="tasten"></div>
-    </div>
+    <div class="tasten" id="tasten"></div>
     <div id="extra"></div>
   </main>
 

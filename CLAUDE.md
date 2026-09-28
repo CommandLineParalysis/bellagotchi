@@ -20,6 +20,17 @@ Testdisziplin, Commit-Stil.
 - Kein Netz, kein Echtgeld, keine Werbung.
 - Keine zweite Bella, kein Besuch, kein Vergleich mit anderen.
 
+## Aufbau der Oberfläche
+
+Obere Hälfte die **Bühne** (nur das Spiel, randlos), untere Hälfte alles
+Bedienbare. Kein Gehäuse um das Bild. Das Gestalterische — Tapete, Muster,
+Boden — liegt hinter dem Stift oben rechts, das Anziehen hinter dem Knopf
+im Kleiderschrank; unter den Tasten steht nur, was zum Raum gehört.
+
+Schlafzimmer und Bad sind **herangezoomte Szenen** (Bettnische, Wanne) und
+werden eigens gezeichnet; Küche, Wohnzimmer und Kleiderschrank sind
+Zimmer mit Wand, Boden und Möbeln.
+
 ## Eigenheiten, die beim Ändern wichtig sind
 
 - **Die Pixelbilder stehen als Textraster in `www/js/sprites.js`**, nicht als
@@ -30,9 +41,22 @@ Testdisziplin, Commit-Stil.
   bekommt dort Kleid- und Haarfarben, eine Kachel Wand- oder Bodenfarben.
   Deshalb braucht ein neues Kleid kein neues Bild. Wand und Boden werden
   getrennt gemalt und benutzen **beide** die Plätze 1–3.
-- **Der Maßstab wird am Gehäuse gemessen, nicht am Schirmrahmen.** Der
-  Rahmen legt sich um das Bild und das Bild richtet sich nach ihm — das
-  ginge im Kreis.
+- **Die Auflösung ist nicht fest.** `buehneMasse()` teilt die gemessene
+  Bühnenfläche durch den Maßstab; die Szenen richten sich an `s.b`/`s.h`
+  aus statt an festen Punkten. Die Bühne bekommt ihre Höhe vom Bild, nicht
+  umgekehrt — sonst hinge das Bild an einer Höhe, die es selbst erzeugt.
+- **In der Nische ist die Zeichenreihenfolge alles:** erst die
+  Kissenwand, dann die Matratze davor, dann Bella darauf. Andersherum
+  schweben die Kissen über dem Bett.
+- **Bella im Bett ist Kopf plus Hügel.** Ohne den Hügel läge nur ein Kopf
+  auf der Matratze. Zugedeckt wechselt der Hügel auf die Kleidfarbe und
+  bekommt einen Saum — daran sieht man, dass „Zudecken" etwas getan hat.
+- **Was auf dem Wannenrand steht, folgt dem Bogen der Ellipse**
+  (`randOben(x)`). Eine feste Höhe ließ die Kerze an der Wand schweben.
+- **Gewaschen wird nur gebadet:** einschäumen, dann abbrausen. Der Schaum
+  steht in `state`, nicht im Bestand, und wird beim Raumwechsel gelöscht.
+- **Bestellt wird kostenlos, geliefert am nächsten Tag um 9.** Das ist die
+  Geduld statt eines Preises. Immer nur eine Bestellung.
 - **Nachts wird mit Rasterpunkten *und* halber Deckkraft gedeckt.** Nur
   Punkte löschen das halbe Bild, nur Deckkraft sähe nach Weichzeichner aus.
   Die Dichte liegt bewusst nicht bei 8 von 16: genau die Hälfte ergibt ein

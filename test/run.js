@@ -17,7 +17,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'gesamtwohl','stimmung','postPruefen','alleGaben','render',
                      'NACHHOLGRENZE','BODEN_WERT','tageszeit','massstab','KLEIDER',
                      'erinnerungsPlan','ERINNERUNG','faelligAb','erinnerungenSchalten',
-                     'FRUEHESTENS_MIN']);
+                     'FRUEHESTENS_MIN','lieferzeit','lieferungPruefen','BESTELLMENGE',
+                     'LIEFERSTUNDE','BADEZUSAETZE','BETTZEUG','BADSPIELZEUG','buehneMasse']);
 
   const tab = r => $$('#nav .tab').find(t => t.dataset.raum === r);
   const taste = text => $$('#tasten .taste').find(t => t.textContent === text);
@@ -112,7 +113,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   await p.check('Nach der Pause ist sie schnell wieder obenauf', async () => {
     click(tab('bad'));
     await wait(20);
-    click(taste('BADEN'));
+    click(taste('EINSCHÄUMEN'));
+    await wait(30);
+    click(taste('ABBRAUSEN'));
     await wait(30);
     click(tab('wohnen'));
     await wait(20);
@@ -188,24 +191,151 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   /* --- Anziehen und Einrichten --- */
 
-  await p.check('Kleid wechseln wirkt sofort', async () => {
+  await p.check('Kleid wechseln steckt hinter dem Anziehen-Knopf', async () => {
     click(tab('schrank'));
     await wait(20);
-    const anders = T.DATA.besitz.kleider.find(k => k !== T.DATA.outfit.kleid);
-    click($$('#extra .stueck').find(b => b.dataset.wahl === anders));
+    if ($$('#extra .stueck').length) throw new Error('Kleiderwahl steht offen unter dem Raum');
+    click(taste('ANZIEHEN'));
     await wait(30);
+    const anders = T.DATA.besitz.kleider.find(k => k !== T.DATA.outfit.kleid);
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === anders));
+    await wait(40);
     if (T.DATA.outfit.kleid !== anders) throw new Error('Outfit: ' + T.DATA.outfit.kleid);
+    click($('#modalblatt .schliessen'));
+    await wait(20);
     return T.KLEIDER[anders].name;
   });
 
-  await p.check('Jeder Raum wird für sich eingerichtet', async () => {
+  await p.check('Einrichten steckt hinter dem Stift und gilt je Raum', async () => {
+    // Unter keinem Raum darf die Farbtafel offen stehen.
+    for (const r of ['schlaf','kueche','wohnen','bad','schrank']){
+      click(tab(r));
+      await wait(20);
+      const offen = $$('#extra .stueck').filter(b => b.dataset.wahl);
+      if (offen.length) throw new Error('Farbtafel offen in ' + r);
+    }
+    click(tab('schrank'));
+    await wait(20);
     const vorher = T.DATA.raeume.schlaf.wand;
-    const anders = T.DATA.besitz.waende.find(w => w !== T.DATA.raeume.schrank.wand);
-    click($$('#extra .stueck').find(b => b.dataset.wahl === anders));
+    click($('#einrichtenbtn'));
     await wait(30);
+    const anders = T.DATA.besitz.waende.find(w => w !== T.DATA.raeume.schrank.wand);
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === anders));
+    await wait(40);
     if (T.DATA.raeume.schrank.wand !== anders) throw new Error('Schrankzimmer nicht umtapeziert');
     if (T.DATA.raeume.schlaf.wand !== vorher) throw new Error('Schlafzimmer mitgefärbt');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
     return 'Schrankzimmer ' + anders + ', Schlafzimmer unverändert';
+  });
+
+  /* --- Bad --- */
+
+  await p.check('Gebadet wird in zwei Schritten, und sonst gar nicht', async () => {
+    T.DATA.bella.schlaeft = false;
+    T.DATA.bella.sauber = 20;
+    click(tab('bad'));
+    await wait(25);
+    const namen = $$('#tasten .taste').map(t => t.textContent);
+    if (namen.some(n => /ZÄHNE|HAARE/.test(n))) throw new Error('andere Waschart: ' + namen.join(','));
+    if (!namen.includes('EINSCHÄUMEN')) throw new Error('kein Einschäumen: ' + namen.join(','));
+    click(taste('EINSCHÄUMEN'));
+    await wait(30);
+    if (!T.state.schaum) throw new Error('kein Schaum');
+    if (T.DATA.bella.sauber > 30) throw new Error('Einschäumen macht schon sauber');
+    const jetzt = $$('#tasten .taste').map(t => t.textContent);
+    if (!jetzt.includes('ABBRAUSEN')) throw new Error('kein Abbrausen: ' + jetzt.join(','));
+    click(taste('ABBRAUSEN'));
+    await wait(30);
+    if (T.state.schaum) throw new Error('Schaum blieb');
+    if (T.DATA.bella.sauber < 60) throw new Error('nicht sauber: ' + T.DATA.bella.sauber);
+    return 'einschäumen → abbrausen, sauber ' + Math.round(T.DATA.bella.sauber);
+  });
+
+  await p.check('Der Schaum bleibt nicht am Raumwechsel hängen', async () => {
+    click(taste('EINSCHÄUMEN'));
+    await wait(30);
+    if (!T.state.schaum) throw new Error('kein Schaum');
+    click(tab('kueche'));
+    await wait(25);
+    if (T.state.schaum) throw new Error('Schaum in die Küche mitgenommen');
+    return 'beim Verlassen abgewaschen';
+  });
+
+  await p.check('Der Badezusatz färbt Wasser und Blasen', async () => {
+    T.DATA.besitz.zusaetze = Object.keys(T.BADEZUSAETZE);
+    click(tab('bad'));
+    await wait(25);
+    click(taste('BADEZUSATZ'));
+    await wait(30);
+    const anders = Object.keys(T.BADEZUSAETZE).find(z => z !== T.DATA.bad.zusatz);
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === anders));
+    await wait(40);
+    if (T.DATA.bad.zusatz !== anders) throw new Error('Zusatz: ' + T.DATA.bad.zusatz);
+    const z = T.BADEZUSAETZE[anders];
+    if (z.wasser.length !== 3 || !z.blase) throw new Error('Zusatz ohne Farben');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    return z.name + ': ' + z.wasser.join(' ');
+  });
+
+  /* --- Schlafnische --- */
+
+  await p.check('Zudecken schaltet einen sichtbaren Zustand', async () => {
+    click(tab('schlaf'));
+    await wait(25);
+    T.DATA.bella.zugedeckt = false;
+    T.render();
+    await wait(20);
+    click(taste('ZUDECKEN'));
+    await wait(30);
+    if (!T.DATA.bella.zugedeckt) throw new Error('nicht zugedeckt');
+    if (!taste('AUFDECKEN')) throw new Error('Knopf heißt weiter Zudecken');
+    click(taste('AUFDECKEN'));
+    await wait(30);
+    if (T.DATA.bella.zugedeckt) throw new Error('Decke blieb');
+    return 'zudecken ⇄ aufdecken';
+  });
+
+  /* --- Küche: Bestellen --- */
+
+  await p.check('Zutaten bestellen ist kostenlos und kommt am nächsten Tag', async () => {
+    T.DATA.bestellung = null;
+    T.DATA.vorrat.honig = 0;
+    click(tab('kueche'));
+    await wait(25);
+    click(taste('BESTELLEN'));
+    await wait(30);
+    click($$('#bestellgitter .stueck').find(b => b.dataset.bestell === 'honig'));
+    await wait(25);
+    click($('#bestellen'));
+    await wait(40);
+    if (!T.DATA.bestellung) throw new Error('nichts bestellt');
+    if (T.DATA.vorrat.honig !== 0) throw new Error('sofort geliefert');
+    const liefert = new Date(T.DATA.bestellung.liefert);
+    if (liefert.getHours() !== T.LIEFERSTUNDE) throw new Error('Lieferstunde: ' + liefert.getHours());
+    if (!(liefert > new Date())) throw new Error('Lieferung liegt in der Vergangenheit');
+    return 'Honig, geliefert ' + liefert.toLocaleDateString('de') + ' um ' + T.LIEFERSTUNDE + ':00';
+  });
+
+  await p.check('Die Lieferung landet zur rechten Zeit im Vorrat', () => {
+    const vorher = T.DATA.vorrat.honig;
+    if (T.lieferungPruefen(new Date(Date.now() + 3600000)))
+      throw new Error('zu früh geliefert');
+    const nachher = T.lieferungPruefen(new Date(Date.now() + 3 * 86400000));
+    if (!nachher) throw new Error('gar nicht geliefert');
+    if (T.DATA.vorrat.honig !== vorher + 1) throw new Error('Vorrat: ' + T.DATA.vorrat.honig);
+    if (T.DATA.bestellung) throw new Error('Bestellung blieb offen stehen');
+    return 'eine Stunde vorher nichts, danach +1 Honig';
+  });
+
+  await p.check('Nur eine Bestellung auf einmal', async () => {
+    T.DATA.bestellung = { liefert: T.lieferzeit(new Date()).toISOString(), waren: { mehl: 1 } };
+    T.render();
+    await wait(25);
+    if (!taste('BESTELLT')) throw new Error('zweite Bestellung möglich');
+    T.DATA.bestellung = null;
+    return 'der Knopf zeigt den Stand statt neu zu bestellen';
   });
 
   /* --- Post --- */
