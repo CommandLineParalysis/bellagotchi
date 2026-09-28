@@ -25,7 +25,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'heuteSchluessel','bestellungVermerken','WANDFARBEN',
                      'BODENFARBEN','alleGaben','KLEIDUNG','FRISUREN','HAARFARBE',
                      'SCHLAFLAGEN','schlaflage','rufKnopf','ESSEN_DAUER','bellaRaster',
-                     'KOPF_H','KOERPER_H']);
+                     'KOPF_H','KOERPER_H','SCHUHE','ACCESSOIRES','ZUBEHOER',
+                     'PX_JE_CM','GROESSEN_CM','punkte','zentimeter','massPruefen',
+                     'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -493,6 +495,120 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     return namen.length + ' Stücke, ' + Object.keys(T.FRISUREN).length + ' Frisuren';
   });
 
+  /* --- Maßstab --- */
+
+  await p.check('Der Maßstab kommt aus der Pflanze', () => {
+    if (Math.abs(T.PX_JE_CM - 140 / 25) > 0.001)
+      throw new Error('Maßstab: ' + T.PX_JE_CM);
+    if (T.punkte(25) !== 140) throw new Error('25 cm sind ' + T.punkte(25) + ' Punkte');
+    if (T.GROESSEN_CM.deko_pflanze !== 25) throw new Error('die Pflanze ist nicht mit 25 cm eingetragen');
+    return T.PX_JE_CM + ' Punkte je cm';
+  });
+
+  await p.check('Bella ist siebenmal so hoch wie die Pflanze', () => {
+    const v = T.GROESSEN_CM.bella / T.GROESSEN_CM.deko_pflanze;
+    if (T.GROESSEN_CM.bella !== 170) throw new Error('Bella: ' + T.GROESSEN_CM.bella + ' cm');
+    if (v < 6 || v > 8) throw new Error('Verhältnis: ' + v.toFixed(1));
+    return '170 cm zu 25 cm = ' + v.toFixed(1) + ':1';
+  });
+
+  await p.check('Eine gelieferte Grafik passt zu ihrer Eintragung', () => {
+    // 140 Punkte bei 25 cm ist per Eichung genau richtig.
+    const gut = T.massPruefen('deko_pflanze', 140);
+    if (gut.abweichung !== 0) throw new Error('Abweichung: ' + gut.abweichung + ' %');
+    // Eine doppelt so große Datei fällt auf.
+    const schlecht = T.massPruefen('deko_pflanze', 280);
+    if (schlecht.abweichung !== 100) throw new Error('nicht erkannt: ' + schlecht.abweichung);
+    return 'passend 0 %, doppelt so groß +100 %';
+  });
+
+  await p.check('Bella passt auf die Bühne, der Boden weicht', () => {
+    /* Der Boden darf nie so breit sein, dass Bella oben herausragt —
+       und nie ganz verschwinden. */
+    const faelle = [{ b: 209, h: 226 }, { b: 140, h: 190 }, { b: 300, h: 400 }];
+    const werte = faelle.map(f => {
+      const band = T.bodenbandCm(f);
+      if (band > T.GROESSEN_CM.bella ? false : f.h - band < T.GROESSEN_CM.bella)
+        throw new Error('Bella ragt heraus bei ' + f.h + ' cm Bühne');
+      if (band < 12) throw new Error('der Boden verschwindet: ' + band);
+      if (band > 45) throw new Error('der Boden ist breiter als erlaubt: ' + band);
+      return f.h + ' cm → ' + band;
+    });
+    return werte.join(' · ');
+  });
+
+  /* --- Schuhe und Accessoires --- */
+
+  await p.check('Schuhe und Accessoires stehen im Kleiderschrank', async () => {
+    T.DATA.besitz.schuhe = Object.keys(T.SCHUHE);
+    T.DATA.besitz.accessoires = Object.keys(T.ACCESSOIRES);
+    await mitBella('schrank');
+    click(taste('ANZIEHEN'));
+    await wait(30);
+    const koepfe = $$('#modalblatt .blockkopf').map(k => k.textContent);
+    for (const noetig of ['KLEIDUNGSSTÜCK','STOFF','FRISUR','SCHUHE','ACCESSOIRE'])
+      if (!koepfe.includes(noetig)) throw new Error(noetig + ' fehlt: ' + koepfe.join(', '));
+    const andere = T.DATA.besitz.schuhe.find(x => x !== T.DATA.outfit.schuhe);
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === andere));
+    await wait(40);
+    if (T.DATA.outfit.schuhe !== andere) throw new Error('Schuhe: ' + T.DATA.outfit.schuhe);
+    const acc = T.DATA.besitz.accessoires.find(x => x !== T.DATA.outfit.accessoire);
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === acc));
+    await wait(40);
+    if (T.DATA.outfit.accessoire !== acc) throw new Error('Accessoire: ' + T.DATA.outfit.accessoire);
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    return T.SCHUHE[andere].name + ' + ' + T.ACCESSOIRES[acc].name;
+  });
+
+  await p.check('Schuhe und Accessoires sind so breit wie Bella', () => {
+    Object.entries(T.ZUBEHOER).forEach(([n, z]) => {
+      if (z.b !== 24) throw new Error(n + ' ist ' + z.b + ' statt 24 breit');
+    });
+    return Object.keys(T.SCHUHE).length + ' Paare, ' + Object.keys(T.ACCESSOIRES).length + ' Accessoires';
+  });
+
+  /* --- Genau platzieren --- */
+
+  await p.check('Gegenstände lassen sich auf den Zentimeter setzen', async () => {
+    click(tab('kueche'));
+    await wait(25);
+    click($('#einrichtenbtn'));
+    await wait(30);
+    click($('#platzierenbtn'));
+    await wait(30);
+    if (!T.state.platzieren) throw new Error('kein Platzierungs-Modus');
+    // Die Pflanze wählen und um zwei Zentimeter schieben.
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === 'deko_pflanze'));
+    await wait(30);
+    const vorher = T.platzVon('kueche', 'deko_pflanze', T.buehneMasse());
+    click($$('#modalblatt .taste').find(b => b.dataset.schieb === '→'));
+    await wait(30);
+    click($$('#modalblatt .taste').find(b => b.dataset.schieb === '↑'));
+    await wait(30);
+    const nachher = T.DATA.plaetze.kueche.deko_pflanze;
+    if (!nachher) throw new Error('nichts gemerkt');
+    if (Math.abs(nachher.x - (vorher.x + 1)) > 0.2) throw new Error('x: ' + nachher.x + ' statt ' + (vorher.x + 1));
+    if (Math.abs(nachher.unten - (vorher.unten - 1)) > 0.2) throw new Error('unten: ' + nachher.unten);
+    return 'x ' + nachher.x.toFixed(1) + ', unten ' + nachher.unten.toFixed(1) + ' cm';
+  });
+
+  await p.check('Die Zahlen lassen sich ausgeben und zurücksetzen', async () => {
+    click($('#platzausgeben'));
+    await wait(25);
+    const text = $('#platzausgabe').textContent;
+    if (!/deko_pflanze/.test(text)) throw new Error('die Pflanze fehlt in der Ausgabe');
+    const gelesen = JSON.parse(text);
+    if (!gelesen.kueche || !gelesen.kueche.deko_pflanze) throw new Error('nicht lesbar');
+    click($('#platzzurueck'));
+    await wait(30);
+    if (T.DATA.plaetze.kueche.deko_pflanze) throw new Error('nicht zurückgesetzt');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    if (T.state.platzieren) throw new Error('der Modus läuft weiter');
+    return 'als JSON ausgegeben, wieder auf die Voreinstellung';
+  });
+
   /* --- Eigene Grafiken --- */
 
   await p.check('Jede Grafik hat einen Platz zum Austauschen', () => {
@@ -660,7 +776,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.besitz.bett = Object.keys(T.BETTZEUG);
     T.DATA.besitz.bad = Object.keys(T.BADSPIELZEUG);
     T.DATA.besitz.zusaetze = Object.keys(T.BADEZUSAETZE);
-    if (T.alleGaben().length) throw new Error('Testaufbau: noch etwas freizuschalten');
+    T.DATA.besitz.schuhe = Object.keys(T.SCHUHE);
+    T.DATA.besitz.accessoires = Object.keys(T.ACCESSOIRES);
+    if (T.alleGaben().length) throw new Error('Testaufbau: noch offen — ' +
+      T.alleGaben().map(g => g.art).join(','));
     T.postPruefen(48 * 60);
     if (!T.DATA.post.length) throw new Error('nichts gekommen');
     const fremd = T.DATA.post.filter(p => p.art !== 'snack');
@@ -682,6 +801,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.besitz.kleider = ['rosenrot'];
     T.DATA.besitz.stuecke = ['kleid'];
     T.DATA.besitz.frisuren = ['lang'];
+    T.DATA.besitz.schuhe = ['sch_barfuss'];
+    T.DATA.besitz.accessoires = ['acc_keins'];
     T.DATA.besitz.waende = ['flieder'];
     T.DATA.besitz.boeden = ['eiche'];
     T.DATA.besitz.bett = ['kissen_a'];

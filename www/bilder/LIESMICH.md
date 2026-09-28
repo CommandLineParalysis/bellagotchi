@@ -13,7 +13,53 @@ Mehr passiert nicht. Die Datei wird **unverändert** gezeichnet: keine
 Palette, kein Umfärben, kein Zuschnitt, keine Glättung. Vergrößert wird
 nur um ganze Vielfache, damit ein gemalter Pixel ein Pixel bleibt.
 
+## Maßstab
+
+Geeicht wird an der ersten gelieferten Grafik: die Pflanze ist in
+Wirklichkeit **25 cm** hoch und **140 Bildpunkte** groß.
+
+    140 Punkte / 25 cm = 5,6 Punkte je Zentimeter
+
+Gezeichnet wird in **Gerätepunkten**, nicht in CSS-Punkten — ein Handy
+hat bei gleicher Fläche das Zwei- bis Dreifache an echten Bildpunkten,
+und genau diese Reserve braucht dieser Detailgrad. Bei dreifacher Dichte
+zeigt die Bühne rund **209 × 226 cm** Zimmer.
+
 ## Größen
+
+Jede Grafik hat eine wirkliche Größe in Zentimetern; sie steht in
+`www/js/massstab.js` unter `GROESSEN_CM`. Daraus ergibt sich, wie viele
+Punkte sie haben soll:
+
+| Ding | wirklich | Punkte (Höhe) |
+|---|---|---|
+| Bella | 170 cm | 952 |
+| Pflanze (gegeben) | 25 cm | 140 |
+| Kühlschrank | 170 cm | 952 |
+| Schrank | 190 cm | 1064 |
+| Regal | 180 cm | 1008 |
+| Fenster | 110 cm | 616 |
+| Tisch | 75 cm | 420 |
+| Sofa | 80 cm | 448 |
+| Kuscheltier | 24–34 cm | 134–190 |
+| Badeente | 9 cm | 50 |
+
+Ist eine gelieferte Datei größer oder kleiner als ihre Eintragung, sagt
+`massPruefen()` die Abweichung in Prozent — das fällt dann auf, statt
+dass das Ding stillschweigend zu groß im Zimmer steht.
+
+## Genau platzieren
+
+Im Spiel: **Stift** oben rechts → **GENAU PLATZIEREN**. Dort einen
+Gegenstand wählen, dann auf das Bild tippen — dorthin kommt seine
+Unterkante, mittig unter den Finger. Die vier Pfeile schieben um einen
+Zentimeter. **ZAHLEN ZEIGEN** gibt alles als JSON aus; schick es mir,
+dann trage ich die Plätze fest ein. **ZURÜCKSETZEN** stellt die
+Voreinstellung wieder her.
+
+## Alte Größenangaben
+
+
 
 Gerechnet wird in **Spielpixeln**, nicht in Bildschirmpunkten. Die Bühne
 ist je nach Gerät etwa 110–200 Spielpixel breit und 90–140 hoch.

@@ -229,6 +229,26 @@ const KLEIDUNG = {
 /* Die Haarfarbe steht fest — wählbar ist die Frisur. */
 const HAARFARBE = ['#FF6FD8', '#C13BC9', '#7B2BA8'];
 
+/* Schuhe liegen unter dem Körper, Accessoires über dem Kopf. Beide sind
+   24 breit wie Bella selbst, damit sie ohne Rechnerei passen. */
+const SCHUHE = {
+  sch_barfuss:   { name: 'Barfuß' },
+  sch_ballerina: { name: 'Ballerinas' },
+  sch_stiefel:   { name: 'Stiefel' },
+  sch_turnschuh: { name: 'Turnschuhe' },
+  sch_sandale:   { name: 'Sandalen' },
+};
+
+const ACCESSOIRES = {
+  acc_keins:      { name: 'Keins' },
+  acc_schleife:   { name: 'Schleife' },
+  acc_hut:        { name: 'Hut' },
+  acc_brille:     { name: 'Brille' },
+  acc_blume:      { name: 'Blume' },
+  acc_kopfhoerer: { name: 'Kopfhörer' },
+  acc_krone:      { name: 'Krone' },
+};
+
 
 /* Gesichter als Flicken über dem Grundbild: 12 × 5 an der Stelle (6, 8).
    Eine eigene Haltung je Stimmung wäre viermal dasselbe Kleid. */
@@ -724,7 +744,7 @@ function pruefeRaster(){
   pruefe('bella_liegt', BELLA_LIEGT, 24);
   Object.entries(GESICHTER).forEach(([n, g]) => pruefe('gesicht_' + n, g, 12));
   Object.entries(KACHELN).forEach(([n, k]) => pruefe('kachel_' + n, k, 8));
-  [MOEBEL, ICONS, KLEINKRAM, KOCHZEUG].forEach(satz => Object.entries(satz).forEach(([n, m]) => {
+  [MOEBEL, ICONS, KLEINKRAM, KOCHZEUG, ZUBEHOER].forEach(satz => Object.entries(satz).forEach(([n, m]) => {
     if (m.p.length !== m.h) fehler.push(n + ': ' + m.p.length + ' Zeilen statt ' + m.h);
     pruefe(n, m.p, m.b);
   }));
@@ -1148,5 +1168,97 @@ const KOCHZEUG = {
     'zYYYYYYYYYYz',
     'zzzzzzzzzzzz',
     '............',
+  ]},
+};
+const ZUBEHOER = {
+  sch_ballerina: { b:24, h:4, p:[
+    '.......pppp..pppp.......',
+    '.......PPPP..PPPP.......',
+    '.......PPPP..PPPP.......',
+    '.......KKKK..KKKK.......',
+  ]},
+  sch_stiefel: { b:24, h:4, p:[
+    '.......MMMM..MMMM.......',
+    '.......NNNN..NNNN.......',
+    '.......NNNN..NNNN.......',
+    '.......KKKK..KKKK.......',
+  ]},
+  sch_turnschuh: { b:24, h:4, p:[
+    '.......TTTT..TTTT.......',
+    '.......WWWW..WWWW.......',
+    '.......WWWW..WWWW.......',
+    '.......KKKK..KKKK.......',
+  ]},
+  sch_sandale: { b:24, h:4, p:[
+    '.......oooo..oooo.......',
+    '.......YYYY..YYYY.......',
+    '.......YYYY..YYYY.......',
+    '.......KKKK..KKKK.......',
+  ]},
+  sch_barfuss: { b:24, h:4, p:[
+    '........................',
+    '........................',
+    '.......hhhh..hhhh.......',
+    '.......hhhh..hhhh.......',
+  ]},
+  acc_schleife: { b:24, h:8, p:[
+    '........................',
+    '........................',
+    '....qqqq.qqqq...........',
+    '....qPPqqqPPq...........',
+    '....qqqqqqqqq...........',
+    '........................',
+    '........................',
+    '........................',
+  ]},
+  acc_hut: { b:24, h:8, p:[
+    '........KKKKKKKK........',
+    '........KVVVVVVK........',
+    '........KVVVVVVK........',
+    '........YYYYYYYY........',
+    '....KKKKKKKKKKKKKKKK....',
+    '....KVVVVVVVVVVVVVVK....',
+    '....KKKKKKKKKKKKKKKK....',
+    '........................',
+  ]},
+  acc_brille: { b:24, h:8, p:[
+    '........................',
+    '........................',
+    '........................',
+    '....KKKKKK....KKKKKK....',
+    '....KccccKKKKKKccccK....',
+    '....KccccK....KccccK....',
+    '....KKKKKK....KKKKKK....',
+    '........................',
+  ]},
+  acc_blume: { b:24, h:8, p:[
+    '........................',
+    '........YYY.............',
+    '.....OOOYYYOOO..........',
+    '.....OOOWWWOOO..........',
+    '.....OOOWWWOOO..........',
+    '........YYY.............',
+    '........YYY.............',
+    '........................',
+  ]},
+  acc_kopfhoerer: { b:24, h:8, p:[
+    '.....VVVVVVVVVVVVVV.....',
+    '.....VVVVVVVVVVVVVV.....',
+    '...KKK............KKK...',
+    '...KxK............KxK...',
+    '...KxK............KxK...',
+    '...KxK............KxK...',
+    '...KKK............KKK...',
+    '........................',
+  ]},
+  acc_krone: { b:24, h:8, p:[
+    '........................',
+    '.....YY..YY..YY..YY.....',
+    '.....YY..YY..YY..YY.....',
+    '.....zzzzzzzzzzzzzz.....',
+    '.....zYYYYYYYYYYYYz.....',
+    '.....zYYPYYYPYYYPYz.....',
+    '.....zzzzzzzzzzzzzz.....',
+    '........................',
   ]},
 };

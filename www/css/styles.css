@@ -164,3 +164,10 @@ nav{
   background:#1B0D1E;border:3px solid var(--primary-deep);color:var(--ink);
   font-family:'Silkscreen',monospace;font-size:13px;
 }
+
+/* Die Zahlen aus dem Platzierungs-Modus, zum Abschreiben. */
+.ausgabe{
+  margin:10px 0 0;padding:8px;max-height:150px;overflow:auto;
+  background:#1B0D1E;border:2px solid var(--primary-deep);color:var(--primary-light);
+  font-family:'Silkscreen',monospace;font-size:9px;line-height:1.5;white-space:pre-wrap;
+}

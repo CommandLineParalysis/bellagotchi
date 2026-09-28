@@ -29,8 +29,12 @@ function leererVault(){
       ort: 'schlaf',            // sie ist immer nur an einem Ort
     },
     bad: { zusatz: 'klar' },
+    /* Von Hand gesetzte Plätze, in Zentimetern: raum → name → {x, unten}.
+       Was hier steht, gilt vor der Voreinstellung. */
+    plaetze: {},
     bestellung: null,
-    outfit: { stueck: 'kleid', farbe: 'rosenrot', frisur: 'lang' },
+    outfit: { stueck: 'kleid', farbe: 'rosenrot', frisur: 'lang',
+              schuhe: 'sch_ballerina', accessoire: 'acc_keins' },
     zeiten: { einschlafen: '02:30', aufwachen: '10:30' },
     raeume: {
       schlaf:  { wand:'flieder', wandmuster:'wand_punkte',   boden:'eiche', bodenmuster:'boden_diele',
@@ -45,7 +49,8 @@ function leererVault(){
               waende: ['flieder','butter','minze','himmel','rosa'],
               boeden: ['eiche','perle','beere'],
               bett: ['kissen_a'], bad: [], zusaetze: ['klar'],
-              stuecke: ['kleid', 'schlafanzug'], frisuren: ['lang', 'kurz'] },
+              stuecke: ['kleid', 'schlafanzug'], frisuren: ['lang', 'kurz'],
+              schuhe: ['sch_barfuss', 'sch_ballerina'], accessoires: ['acc_keins'] },
     vorrat: { erdbeere: 3, milch: 2, mehl: 2, honig: 1, beere: 2, ei: 2 },
     snacks: { keks: 2, apfel: 1 },
     bestelltHeute: { tag: '', anzahl: 0 },
@@ -73,12 +78,13 @@ const state = {
   szene: null,        // läuft gerade eine Kochszene?
   essen: null,        // isst Bella gerade in der Küche?
   dusche: null,       // läuft gerade das Abbrausen?
+  platzieren: null,   // { was } — welcher Gegenstand gerade gesetzt wird
   bildzaehler: 0,     // treibt die Zappel-Animation
 };
 
 function vaultPayload(){
   const v = {};
-  for (const k of ['bella','bad','bestellung','bestelltHeute','outfit','zeiten','raeume',
+  for (const k of ['bella','bad','plaetze','bestellung','bestelltHeute','outfit','zeiten','raeume',
                    'besitz','vorrat','snacks','kochbuch','post','gesprochen','erinnerungen',
                    'stand','letzterBesuch','modus','backup']) v[k] = DATA[k];
   return v;
@@ -110,6 +116,15 @@ function adoptVault(saved){
     ort: RAEUME.includes(b.ort) ? b.ort : 'schlaf',
   };
   v.bad = { zusatz: BADEZUSAETZE[(saved.bad || {}).zusatz] ? saved.bad.zusatz : 'klar' };
+  v.plaetze = {};
+  Object.entries(saved.plaetze || {}).forEach(([raum, dinge]) => {
+    if (!RAEUME.includes(raum) || !dinge || typeof dinge !== 'object') return;
+    v.plaetze[raum] = {};
+    Object.entries(dinge).forEach(([name, o]) => {
+      if (o && Number.isFinite(o.x) && Number.isFinite(o.unten))
+        v.plaetze[raum][name] = { x: +o.x, unten: +o.unten };
+    });
+  });
   const roh = Array.isArray(saved.bestellung) ? saved.bestellung
             : (saved.bestellung ? [saved.bestellung] : []);
   const echt = roh.filter(b => b && typeof b.liefert === 'string'
@@ -121,6 +136,8 @@ function adoptVault(saved){
     stueck: KLEIDUNG[o.stueck] ? o.stueck : 'kleid',
     farbe:  KLEIDER[o.farbe] ? o.farbe : (KLEIDER[o.kleid] ? o.kleid : 'rosenrot'),
     frisur: FRISUREN[o.frisur] ? o.frisur : 'lang',
+    schuhe: SCHUHE[o.schuhe] ? o.schuhe : 'sch_ballerina',
+    accessoire: ACCESSOIRES[o.accessoire] ? o.accessoire : 'acc_keins',
   };
   const z = saved.zeiten || {};
   v.zeiten = { einschlafen: uhrzeit(z.einschlafen, '02:30'),
@@ -147,6 +164,8 @@ function adoptVault(saved){
     kleider: gefiltert(bs.kleider, KLEIDER, ['rosenrot','himmelblau']),
     stuecke: gefiltert(bs.stuecke, KLEIDUNG, ['kleid','schlafanzug']),
     frisuren: gefiltert(bs.frisuren, FRISUREN, ['lang','kurz']),
+    schuhe: gefiltert(bs.schuhe, SCHUHE, ['sch_barfuss','sch_ballerina']),
+    accessoires: gefiltert(bs.accessoires, ACCESSOIRES, ['acc_keins']),
     waende:  gefiltert(bs.waende,  WANDFARBEN, ['flieder','butter','minze','himmel','rosa']),
     boeden:  gefiltert(bs.boeden,  BODENFARBEN, ['eiche','perle','beere']),
     bett:    (Array.isArray(bs.bett) ? bs.bett : []).filter(x => BETTZEUG[x]),
@@ -158,6 +177,8 @@ function adoptVault(saved){
   if (!v.besitz.kleider.includes(v.outfit.farbe)) v.besitz.kleider.push(v.outfit.farbe);
   if (!v.besitz.stuecke.includes(v.outfit.stueck)) v.besitz.stuecke.push(v.outfit.stueck);
   if (!v.besitz.frisuren.includes(v.outfit.frisur)) v.besitz.frisuren.push(v.outfit.frisur);
+  if (!v.besitz.schuhe.includes(v.outfit.schuhe)) v.besitz.schuhe.push(v.outfit.schuhe);
+  if (!v.besitz.accessoires.includes(v.outfit.accessoire)) v.besitz.accessoires.push(v.outfit.accessoire);
 
   v.vorrat = {};
   Object.keys(ZUTATEN).forEach(k => {
@@ -428,66 +449,146 @@ function gesamtwohl(){
    Die Szenen richten sich an der Fläche aus statt an festen Punkten;
    deshalb steht unten überall `s.b` und `s.h` statt einer Zahl. */
 
-const BUEHNE_ANTEIL = 0.46;
+const BUEHNE_ANTEIL = 0.5;
 
-/* Wie viele Bildpunkte ein **gezeichneter** Platzhalter-Pixel belegt.
+/* Gerechnet wird ab hier in **Zentimetern**. Wie viele Bildpunkte
+   daraus werden, sagt der Maßstab in massstab.js; gezeichnet wird in
+   Gerätepunkten, nicht in CSS-Punkten — sonst reichte die Auflösung
+   für diesen Detailgrad nicht.
 
-   Gelieferte Grafiken werden 1:1 gezeichnet — ein gemalter Pixel ist ein
-   Bildpunkt. Meine Platzhalter sind grob und dürfen das auch sein; sie
-   werden dreifach gesetzt. Dadurch passen beide zusammen, ohne dass eine
-   gelieferte Datei verkleinert werden müsste: die erste Pflanze kam mit
-   120 × 140 Punkten, und bei der alten Auflösung wäre sie so breit
-   gewesen wie die ganze Küche. */
-const GROB = 3;
-
-const SCHIRM_MIN_B = 96, SCHIRM_MAX_B = 260;
-const SCHIRM_MIN_H = 88, SCHIRM_MAX_H = 200;
+   Die Bühne zeigt so viel Zimmer, wie das Gerät hergibt: auf einem
+   dichten Bildschirm mehr, auf einem groben weniger. Der Fußboden liegt
+   immer unten, damit bei wenig Platz oben etwas fehlt und nicht unten. */
 
 function buehneMasse(){
   const el = typeof document !== 'undefined' ? document.getElementById('buehne') : null;
-  const breite = el ? el.clientWidth : 0;
-  const hoehe = typeof window !== 'undefined' ? Math.round(window.innerHeight * BUEHNE_ANTEIL) : 0;
-  if (!(breite > 60) || !(hoehe > 60)) return { b: 148, h: 112, mass: GROB, fein: 1 };
-  const klemm = (x, min, max) => Math.max(min, Math.min(max, x));
+  const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+  const breiteCss = el ? el.clientWidth : 0;
+  const hoeheCss = typeof window !== 'undefined' ? Math.round(window.innerHeight * BUEHNE_ANTEIL) : 0;
+  if (!(breiteCss > 60) || !(hoeheCss > 60)){
+    // jsdom misst nicht: ein plausibles Handy annehmen.
+    return { b: 209, h: 226, dpr: 3, breiteCss: 390, hoeheCss: 422, mass: PX_JE_CM };
+  }
   return {
-    b: klemm(Math.floor(breite / GROB), SCHIRM_MIN_B, SCHIRM_MAX_B),
-    h: klemm(Math.floor(hoehe / GROB), SCHIRM_MIN_H, SCHIRM_MAX_H),
-    mass: GROB,     // Kantenlänge eines gezeichneten Platzhalter-Pixels
-    fein: 1,        // Kantenlänge eines Punktes in einer gelieferten Datei
+    b: +(breiteCss * dpr / PX_JE_CM).toFixed(2),
+    h: +(hoeheCss * dpr / PX_JE_CM).toFixed(2),
+    dpr, breiteCss, hoeheCss,
+    /* Für die kleinen Raster, die keine eigene Größe haben: eine
+       Rasterzelle entspricht einem Zentimeter. Alles Große geht über
+       maleNachMass und seine Zentimeterangabe. */
+    mass: PX_JE_CM,
   };
 }
 
-/* Ein Rechteck in Spielpixeln. Alles Gezeichnete geht hier durch, damit
-   nirgends versehentlich ein halber Pixel entsteht. */
+/* Ein Rechteck, in Zentimetern angegeben. Alles Gezeichnete geht hier
+   durch, damit nirgends versehentlich eine andere Einheit einfließt. */
 function px(ctx, s, x, y, b, h, farbe){
   if (!farbe) return;
   ctx.fillStyle = farbe;
-  ctx.fillRect(Math.round(x) * s.mass, Math.round(y) * s.mass,
-               Math.max(0, Math.round(b)) * s.mass, Math.max(0, Math.round(h)) * s.mass);
+  ctx.fillRect(Math.round(x * PX_JE_CM), Math.round(y * PX_JE_CM),
+               Math.max(0, Math.round(b * PX_JE_CM)), Math.max(0, Math.round(h * PX_JE_CM)));
 }
 
 /* Eine gefüllte Ellipse, zeilenweise aus Rechtecken — so bekommt sie
-   die stufige Kante, die zur Pixelgrafik gehört, statt einer glatten. */
+   die stufige Kante, die zur Pixelgrafik gehört. Gerechnet wird in
+   Punkten, damit die Stufen auf dem Punktraster sitzen. */
 function ellipse(ctx, s, mx, my, rx, ry, farbe){
-  for (let y = -ry; y <= ry; y++){
-    const t = 1 - (y * y) / (ry * ry);
+  if (!farbe) return;
+  const mxp = mx * PX_JE_CM, myp = my * PX_JE_CM;
+  const rxp = Math.round(rx * PX_JE_CM), ryp = Math.round(ry * PX_JE_CM);
+  ctx.fillStyle = farbe;
+  for (let y = -ryp; y <= ryp; y++){
+    const t = 1 - (y * y) / (ryp * ryp);
     if (t <= 0) continue;
-    const halb = Math.round(rx * Math.sqrt(t));
-    px(ctx, s, mx - halb, my + y, halb * 2 + 1, 1, farbe);
+    const halb = Math.round(rxp * Math.sqrt(t));
+    ctx.fillRect(Math.round(mxp - halb), Math.round(myp + y), halb * 2 + 1, 1);
   }
 }
 
-/* Ein Ellipsenring: außen gefüllt, innen wieder frei. */
 function ellipsenRing(ctx, s, mx, my, rx, ry, dicke, farbe){
-  for (let y = -ry; y <= ry; y++){
-    const t = 1 - (y * y) / (ry * ry);
+  const mxp = mx * PX_JE_CM, myp = my * PX_JE_CM;
+  const rxp = Math.round(rx * PX_JE_CM), ryp = Math.round(ry * PX_JE_CM);
+  const dp = Math.max(1, Math.round(dicke * PX_JE_CM));
+  ctx.fillStyle = farbe;
+  for (let y = -ryp; y <= ryp; y++){
+    const t = 1 - (y * y) / (ryp * ryp);
     if (t <= 0) continue;
-    const aussen = Math.round(rx * Math.sqrt(t));
-    const ti = 1 - (y * y) / ((ry - dicke) * (ry - dicke));
-    const innen = ti > 0 ? Math.round((rx - dicke) * Math.sqrt(ti)) : -1;
-    if (innen < 0){ px(ctx, s, mx - aussen, my + y, aussen * 2 + 1, 1, farbe); continue; }
-    px(ctx, s, mx - aussen, my + y, aussen - innen, 1, farbe);
-    px(ctx, s, mx + innen + 1, my + y, aussen - innen, 1, farbe);
+    const aussen = Math.round(rxp * Math.sqrt(t));
+    const ti = 1 - (y * y) / ((ryp - dp) * (ryp - dp));
+    const innen = ti > 0 ? Math.round((rxp - dp) * Math.sqrt(ti)) : -1;
+    if (innen < 0){ ctx.fillRect(Math.round(mxp - aussen), Math.round(myp + y), aussen * 2 + 1, 1); continue; }
+    ctx.fillRect(Math.round(mxp - aussen), Math.round(myp + y), aussen - innen, 1);
+    ctx.fillRect(Math.round(mxp + innen + 1), Math.round(myp + y), aussen - innen, 1);
+  }
+}
+
+/* Ein Platzhalter-Raster, auf seine wirkliche Größe gezogen und unten
+   links verankert — Dinge stehen auf dem Boden, sie hängen nicht an
+   ihrer Oberkante. */
+function maleNachMass(ctx, s, name, raster, xCm, untenCm, plaetze){
+  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
+  if (maleBildNachMass(ctx, s, name, xCm, untenCm)) return;
+  if (!rows || !rows.length) return;
+  const cm = groesseCm(name);
+  const zug = cm ? punkte(cm) / rows.length : PX_JE_CM;
+  const hoehe = rows.length * zug;
+  const xp = Math.round(xCm * PX_JE_CM), yp = Math.round(untenCm * PX_JE_CM - hoehe);
+  for (let j = 0; j < rows.length; j++){
+    const zeile = rows[j];
+    for (let i = 0; i < zeile.length; i++){
+      const ch = zeile[i];
+      if (ch === '.') continue;
+      const nr = PLAETZE.indexOf(ch);
+      const farbe = nr >= 0 ? (plaetze && plaetze[nr]) : PALETTE[ch];
+      if (!farbe) continue;
+      ctx.fillStyle = farbe;
+      ctx.fillRect(Math.round(xp + i * zug), Math.round(yp + j * zug),
+                   Math.ceil(zug), Math.ceil(zug));
+    }
+  }
+}
+
+/* Eine gelieferte Datei: 1:1 gezeichnet, unten links verankert. */
+function maleBildNachMass(ctx, s, name, xCm, untenCm){
+  const b = BILDER[name];
+  if (!b) return false;
+  ctx.drawImage(b.el, Math.round(xCm * PX_JE_CM), Math.round(untenCm * PX_JE_CM - b.h), b.b, b.h);
+  return true;
+}
+
+/* Wie breit etwas in Zentimetern ist — für Platzierungen. */
+function breiteCm(name, raster){
+  const b = BILDER[name];
+  if (b) return zentimeter(b.b);
+  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
+  const cm = groesseCm(name);
+  if (!rows || !rows.length || !cm) return 0;
+  return +(cm * rows[0].length / rows.length).toFixed(1);
+}
+
+/* Wand- und Bodenmuster kacheln. Ein Motiv ist rund 12 cm groß. */
+const KACHEL_CM = 12;
+
+function maleKachelCm(ctx, s, kachel, xCm, yCm, bCm, hCm, plaetze){
+  const zug = punkte(KACHEL_CM) / 8;
+  const x0 = xCm * PX_JE_CM, y0 = yCm * PX_JE_CM;
+  const bp = bCm * PX_JE_CM, hp = hCm * PX_JE_CM;
+  for (let j = 0; j < hp; j += 8 * zug){
+    for (let i = 0; i < bp; i += 8 * zug){
+      for (let r = 0; r < 8; r++){
+        for (let c = 0; c < 8; c++){
+          const ch = kachel[r][c];
+          if (ch === '.') continue;
+          const nr = PLAETZE.indexOf(ch);
+          const farbe = nr >= 0 ? (plaetze && plaetze[nr]) : PALETTE[ch];
+          if (!farbe) continue;
+          const xx = x0 + i + c * zug, yy = y0 + j + r * zug;
+          if (xx > x0 + bp || yy > y0 + hp) continue;
+          ctx.fillStyle = farbe;
+          ctx.fillRect(Math.round(xx), Math.round(yy), Math.ceil(zug), Math.ceil(zug));
+        }
+      }
+    }
   }
 }
 
@@ -551,7 +652,7 @@ function schlaflage(jetzt){
 function zappel(){
   if (DATA.bella.schlaeft) return 0;
   const st = stimmung();
-  if (st === 'froh') return (state.bildzaehler % 6 < 3) ? -1 : 0;
+  if (st === 'froh') return (state.bildzaehler % 6 < 3) ? -2 : 0;
   if (st === 'traurig') return 0;
   return (state.bildzaehler % 20 < 10) ? 0 : -1;
 }
@@ -560,68 +661,144 @@ function zappel(){
    Gilt für Küche, Wohnzimmer und Kleiderschrank. Schlafzimmer und Bad
    sind herangezoomte Szenen und werden eigens gezeichnet. */
 
-const BODENBAND = 34;
+/* Bella stehend: Körper und Gesicht mit demselben Zug gezeichnet, sonst
+   säße das Gesicht neben dem Kopf. `untenCm` ist der Boden unter ihren
+   Füßen — Dinge stehen auf dem Boden, sie hängen nicht an der
+   Oberkante. */
+function maleBellaStehend(ctx, s, xCm, untenCm, gesicht, nurKopf){
+  if (maleBildNachMass(ctx, s, 'bella_steht', xCm, untenCm)) return;
+  const plaetze = outfitPlaetze();
+  const rows = nurKopf ? bellaRaster().slice(0, KOPF_H) : bellaRaster();
+  const cm = nurKopf ? GROESSEN_CM.bella * KOPF_H / (KOPF_H + KOERPER_H) : GROESSEN_CM.bella;
+  const zug = punkte(cm) / rows.length;
+  const xp = Math.round(xCm * PX_JE_CM), yp = Math.round(untenCm * PX_JE_CM - rows.length * zug);
+  const malen = (raster, dx, dy) => {
+    for (let j = 0; j < raster.length; j++)
+      for (let i = 0; i < raster[j].length; i++){
+        const ch = raster[j][i];
+        if (ch === '.') continue;
+        const nr = PLAETZE.indexOf(ch);
+        const farbe = nr >= 0 ? plaetze[nr] : PALETTE[ch];
+        if (!farbe) continue;
+        ctx.fillStyle = farbe;
+        ctx.fillRect(Math.round(xp + (i + dx) * zug), Math.round(yp + (j + dy) * zug),
+                     Math.ceil(zug), Math.ceil(zug));
+      }
+  };
+  malen(rows, 0, 0);
+  malen(GESICHTER[gesicht || stimmung()], GESICHT_X, GESICHT_Y);
+  if (!nurKopf){
+    /* Die Schuhe liegen über den letzten vier Zeilen des Körpers, das
+       Accessoire über dem Kopf. Beide sind 24 breit wie Bella selbst —
+       so braucht es keine Rechnerei, nur eine Zeilennummer. */
+    const sch = ZUBEHOER[DATA.outfit.schuhe];
+    if (sch) malen(sch.p, 0, rows.length - sch.h);
+  }
+  const acc = ZUBEHOER[DATA.outfit.accessoire];
+  if (acc) malen(acc.p, 0, -acc.h + 3);
+}
 
+function bellaBreiteCm(){ return breiteCm('bella', bellaRaster()); }
+
+/* Im Platzierungs-Modus bekommt jedes Ding einen Rahmen, das gewählte
+   einen hellen. Ohne den sieht man nicht, was man gerade verschiebt. */
+function rahmenUm(ctx, s, name, sprite, p, gewaehlt){
+  const b = breiteCm(name, sprite), h = groesseCm(name) || 0;
+  if (!b || !h) return;
+  const farbe = gewaehlt ? '#FFF06A' : 'rgba(255,240,106,.35)';
+  const d = gewaehlt ? 1.2 : 0.6;
+  px(ctx, s, p.x, p.unten - h, b, d, farbe);
+  px(ctx, s, p.x, p.unten - d, b, d, farbe);
+  px(ctx, s, p.x, p.unten - h, d, h, farbe);
+  px(ctx, s, p.x + b - d, p.unten - h, d, h, farbe);
+}
+
+/* Wie viel vom Zimmer Fußboden ist, in Zentimetern — aber nie so viel,
+   dass Bella oben aus dem Bild ragt. Auf einem Gerät mit wenig
+   Punktdichte bleibt weniger Zimmer übrig, und dann weicht der Boden. */
+const BODENBAND_MAX = 45;
+
+function bodenbandCm(s){
+  return Math.max(12, Math.min(BODENBAND_MAX, s.h - GROESSEN_CM.bella - 12));
+}
+
+/* Wo die Möbel stehen: `x` in Zentimetern vom genannten Rand, `wand`
+   für Dinge, die hängen (dann ist `y` die Höhe der Oberkante über dem
+   Boden). Alles andere steht auf dem Boden. */
 const EINRICHTUNG = {
-  kueche: [ {s:'fenster', von:'mitte', x:-6, y:14},
-            {s:'herd', von:'links', x:6, steht:true},
-            {s:'kuehlschrank', von:'links', x:30, steht:true},
-            {s:'tisch', von:'rechts', x:6, steht:true} ],
-  wohnen: [ {s:'fenster', von:'mitte', x:16, y:10},
-            {s:'regal', von:'links', x:4, steht:true},
-            {s:'sofa', von:'mitte', x:10, steht:true},
-            {s:'pflanze', von:'rechts', x:4, steht:true} ],
-  schrank:[ {s:'stange', von:'mitte', x:-4, y:8},
-            {s:'schrank', von:'links', x:4, steht:true},
-            {s:'spiegel', von:'rechts', x:6, y:16} ],
+  kueche: [ {s:'fenster', von:'mitte', x:-30, hoehe:210},
+            {s:'herd', von:'links', x:6},
+            {s:'kuehlschrank', von:'links', x:60},
+            {s:'tisch', von:'rechts', x:10} ],
+  wohnen: [ {s:'fenster', von:'mitte', x:40, hoehe:215},
+            {s:'regal', von:'links', x:4},
+            {s:'sofa', von:'mitte', x:0},
+            {s:'pflanze', von:'rechts', x:6} ],
+  schrank:[ {s:'stange', von:'mitte', x:-10, hoehe:190},
+            {s:'schrank', von:'links', x:6},
+            {s:'spiegel', von:'rechts', x:12, hoehe:180} ],
 };
 
 const BELLA_STELLE = { kueche:'mitte', wohnen:'links', schrank:'rechts' };
 
-function platzieren(m, s, bodenY){
-  const sp = MOEBEL[m.s];
-  const x = m.von === 'rechts' ? s.b - sp.b - m.x
-          : m.von === 'mitte'  ? Math.round((s.b - sp.b) / 2) + (m.x || 0)
+function eigenerPlatz(raum, name){
+  const r = DATA.plaetze[raum];
+  return (r && r[name]) || null;
+}
+
+function platzierenCm(m, s, bodenY, raum){
+  const eigen = eigenerPlatz(raum, m.s);
+  if (eigen) return eigen;
+  const breite = breiteCm(m.s, MOEBEL[m.s]);
+  const x = m.von === 'rechts' ? s.b - breite - m.x
+          : m.von === 'mitte'  ? (s.b - breite) / 2 + (m.x || 0)
           : m.x;
-  const y = m.steht ? bodenY + 4 - sp.h : m.y;
-  return { x, y };
+  const unten = m.hoehe ? bodenY - m.hoehe + (groesseCm(m.s) || 0) : bodenY + 2;
+  return { x, unten };
 }
 
 function maleZimmer(ctx, s, raum){
   const f = raumFarben(raum);
-  const bodenY = s.h - BODENBAND;
+  const bodenY = s.h - bodenbandCm(s);
 
   px(ctx, s, 0, 0, s.b, s.h, f.wand[0]);
-  maleKachel(ctx, f.wandmuster, 0, 0, s.b, bodenY, s.mass, f.wand);
-  maleKachel(ctx, f.bodenmuster, 0, bodenY, s.b, s.h - bodenY, s.mass, f.boden);
-  px(ctx, s, 0, bodenY - 2, s.b, 2, PALETTE.K);
+  maleKachelCm(ctx, s, f.wandmuster, 0, 0, s.b, bodenY, f.wand);
+  maleKachelCm(ctx, s, f.bodenmuster, 0, bodenY, s.b, s.h - bodenY, f.boden);
+  px(ctx, s, 0, bodenY - 3, s.b, 3, PALETTE.K);
 
   const stoff = stoffFarben();
   EINRICHTUNG[raum].forEach(m => {
-    const p = platzieren(m, s, bodenY);
-    maleSprite(ctx, MOEBEL[m.s], p.x, p.y, s.mass, [stoff[0], stoff[1], stoff[2]]);
+    const p = platzierenCm(m, s, bodenY, raum);
+    maleNachMass(ctx, s, m.s, MOEBEL[m.s], p.x, p.unten, [stoff[0], stoff[1], stoff[2]]);
+    if (state.platzieren) rahmenUm(ctx, s, m.s, MOEBEL[m.s], p, m.s === state.platzieren.was);
   });
 
-  // Die Pflanze in der Küche: die erste gelieferte Grafik.
+  // Die Pflanze aus der Post steht in der Küche, in ihrer eigenen Größe.
   if (raum === 'kueche'){
-    const mp = bildMasse(s, 'deko_pflanze');
-    if (mp) maleBild(ctx, s, 'deko_pflanze', s.b - mp.b - 4, bodenY + 4 - mp.h);
+    const eigen = eigenerPlatz(raum, 'deko_pflanze');
+    const pb = breiteCm('deko_pflanze', null);
+    const p = eigen || { x: s.b - pb - 30, unten: bodenY + 2 };
+    maleNachMass(ctx, s, 'deko_pflanze', null, p.x, p.unten, null);
+    if (state.platzieren) rahmenUm(ctx, s, 'deko_pflanze', null, p, state.platzieren.was === 'deko_pflanze');
   }
 
   // Bella steht nur in dem Zimmer, in dem sie gerade ist.
   if (DATA.bella.ort !== raum) return;
   const wo = BELLA_STELLE[raum];
-  const bx = wo === 'links' ? Math.round(s.b * 0.16)
-           : wo === 'rechts' ? Math.round(s.b * 0.72)
-           : Math.round(s.b * 0.44);
-  const by = bodenY + 10 - 32 + zappel();
-  const plaetze = outfitPlaetze();
+  const bb = bellaBreiteCm();
+  const bx = wo === 'links' ? s.b * 0.08
+           : wo === 'rechts' ? s.b * 0.62
+           : s.b * 0.34;
   const isst = state.essen && raum === 'kueche';
-  const neigung = isst && (Math.floor(Date.now() / 220) % 4) % 3 === 1 ? 1 : 0;
-  maleFigur(ctx, s, 'bella_steht', bellaRaster(), bx, by + neigung, plaetze);
-  const takt = isst ? maleBellaIsst(ctx, s, bx, by, bx + 12, bodenY + 6) : 0;
-  maleRaster(ctx, GESICHTER[isst ? (takt === 2 ? 'satt' : 'froh') : stimmung()],
-             bx + GESICHT_X, by + neigung + GESICHT_Y, s.mass, plaetze);
+  const takt = Math.floor(Date.now() / 220) % 4;
+  const neigung = isst && takt % 3 === 1 ? 2 : zappel();
+  maleBellaStehend(ctx, s, bx, bodenY + 4 + neigung,
+                   isst ? (takt === 2 ? 'satt' : 'froh') : stimmung());
+  if (isst){
+    const tellerB = breiteCm('teller', KOCHZEUG.teller);
+    maleNachMass(ctx, s, 'teller', KOCHZEUG.teller, bx + bb / 2 - tellerB / 2,
+                 bodenY + 4 - 75, null);
+  }
 }
 
 /* ---------- Die Schlafnische ----------
@@ -646,10 +823,8 @@ const NISCHE = {
   fenster:   '#2A3566',
 };
 
-/* Immer dieselbe Stadt, immer dieselben Lichter: ein fester Startwert
-   statt Math.random, sonst flackerte die Skyline bei jedem Neuzeichnen
-   — und neu gezeichnet wird jede Sekunde. FNV-1a, weil die einfache
-   Zeichensumme bei kurzen, ähnlichen Namen fast dieselbe Zahl liefert. */
+/* FNV-1a: die einfache Zeichensumme liefert bei kurzen, ähnlichen
+   Namen fast dieselbe Zahl. */
 function streuung(text){
   let h = 2166136261;
   for (let i = 0; i < text.length; i++){
@@ -833,7 +1008,7 @@ function maleSchlafnische(ctx, s){
     const sp = KLEINKRAM[id];
     if (!sp) return;
     const x = mx + bettRx - 12 - i * 16;
-    maleSprite(ctx, sp, x - Math.round(sp.b / 2), bettUnten - 10 - sp.h, s.mass, null);
+    maleFigur(ctx, s, id, sp, x - sp.b / 2, bettUnten - 10 - sp.h, null);
   });
 
   /* Der warme Lichtsaum unter der Nischenkante — in der Vorlage ist er
@@ -906,8 +1081,8 @@ function maleBadeszene(ctx, s){
   const bx = mx - 12, by = my - ry + 6;
   if (inDerWanne){
   maleFigur(ctx, s, 'bella_steht', bellaRaster().slice(0, KOPF_H), bx, by, plaetze);
-  maleRaster(ctx, GESICHTER[state.schaum ? 'froh' : stimmung()],
-             bx + GESICHT_X, by + GESICHT_Y, s.mass, plaetze);
+  maleFigur(ctx, s, '', GESICHTER[state.schaum ? 'froh' : stimmung()],
+             bx + GESICHT_X, by + GESICHT_Y, plaetze);
   }
   if (state.schaum && inDerWanne){
     // Schaumhaube und Schaumkragen, damit man das Einschäumen sieht.
@@ -934,7 +1109,7 @@ function maleBadeszene(ctx, s){
     const x = mx - Math.round(spanne / 2)
             + (rand.length > 1 ? Math.round(i * spanne / (rand.length - 1)) : Math.round(spanne / 2))
             - Math.round(sp.b / 2);
-    maleSprite(ctx, sp, x, randOben(x + sp.b / 2) - sp.h + 3, s.mass, null);
+    maleFigur(ctx, s, id, sp, x, randOben(x + sp.b / 2) - sp.h + 3, null);
   });
 }
 
@@ -943,16 +1118,41 @@ function maleBadeszene(ctx, s){
 /* Dasselbe Bild, aber um einen ganzen Faktor vergrößert — für die
    Kochszene, in der Zutat und Gericht die Hauptsache sind. */
 function maleGross(ctx, s, platz, sprite, x, y, faktor){
-  const gross = { mass: s.mass * faktor, b: s.b, h: s.h };
-  const gx = Math.round(x / faktor), gy = Math.round(y / faktor);
-  if (maleBild(ctx, gross, platz, gx, gy)) return;
-  if (sprite) maleSprite(ctx, sprite, gx, gy, gross.mass, null);
+  /* In den Kochkarten wird nicht nach Weltgröße gezeichnet, sondern
+     nach Bildwirkung: Zutat und Gericht sind dort die Hauptsache. */
+  const zug = s.mass * (faktor || 1);
+  if (BILDER[platz]){ maleBildNachMass(ctx, s, platz, x, y + (BILDER[platz].h / PX_JE_CM)); return; }
+  if (!sprite) return;
+  const rows = sprite.p || sprite;
+  for (let j = 0; j < rows.length; j++)
+    for (let i = 0; i < rows[j].length; i++){
+      const ch = rows[j][i];
+      if (ch === '.') continue;
+      const farbe = PALETTE[ch];
+      if (!farbe) continue;
+      ctx.fillStyle = farbe;
+      ctx.fillRect(Math.round((x + i * (faktor || 1)) * PX_JE_CM),
+                   Math.round((y + j * (faktor || 1)) * PX_JE_CM),
+                   Math.ceil(PX_JE_CM * (faktor || 1)), Math.ceil(PX_JE_CM * (faktor || 1)));
+    }
 }
 
 function maleFigur(ctx, s, platz, raster, x, y, plaetze){
+  // Vereinfachte Fassung: eine Rasterzelle entspricht einem Zentimeter.
+  const rows = Array.isArray(raster) ? raster : (raster && raster.p);
   if (maleBild(ctx, s, platz, x, y)) return;
-  if (Array.isArray(raster)) maleRaster(ctx, raster, x, y, s.mass, plaetze);
-  else if (raster) maleSprite(ctx, raster, x, y, s.mass, plaetze);
+  if (!rows) return;
+  for (let j = 0; j < rows.length; j++)
+    for (let i = 0; i < rows[j].length; i++){
+      const ch = rows[j][i];
+      if (ch === '.') continue;
+      const nr = PLAETZE.indexOf(ch);
+      const farbe = nr >= 0 ? (plaetze && plaetze[nr]) : PALETTE[ch];
+      if (!farbe) continue;
+      ctx.fillStyle = farbe;
+      ctx.fillRect(Math.round((x + i) * PX_JE_CM), Math.round((y + j) * PX_JE_CM),
+                   Math.ceil(PX_JE_CM), Math.ceil(PX_JE_CM));
+    }
 }
 
 /* ---------- Kochen: drei Bilder nacheinander ----------
@@ -1090,8 +1290,8 @@ function maleEssszene(ctx, s, rezept){
   const plaetze = outfitPlaetze();
   const bx = mitte - 12, by = unten - 30 + neigung;
   maleFigur(ctx, s, 'bella_steht', bellaRaster().slice(0, 20), bx, by, plaetze);
-  maleRaster(ctx, GESICHTER[takt === 2 ? 'satt' : 'froh'],
-             bx + GESICHT_X, by + GESICHT_Y, s.mass, plaetze);
+  maleFigur(ctx, s, '', GESICHTER[takt === 2 ? 'satt' : 'froh'],
+             bx + GESICHT_X, by + GESICHT_Y, plaetze);
 
   maleFigur(ctx, s, 'teller', KOCHZEUG.teller, mitte - 14, unten - 4, null);
   const farbe = zutatFarbe(rezept.aus[0]);
@@ -1112,12 +1312,12 @@ function maleEssszene(ctx, s, rezept){
    Browsers — in der Bühne gibt es kein DOM. */
 function schrift(ctx, s, text, y){
   ctx.save();
-  ctx.font = (5 * s.mass) + "px 'Silkscreen', monospace";
+  ctx.font = Math.round(7 * PX_JE_CM) + "px 'Silkscreen', monospace";
   ctx.textAlign = 'center';
   ctx.fillStyle = '#2B1B3D';
-  ctx.fillText(text, (s.b / 2) * s.mass + s.mass, y * s.mass + s.mass);
+  ctx.fillText(text, (s.b / 2) * PX_JE_CM + PX_JE_CM, y * PX_JE_CM + PX_JE_CM);
   ctx.fillStyle = '#F4EFE4';
-  ctx.fillText(text, (s.b / 2) * s.mass, y * s.mass);
+  ctx.fillText(text, (s.b / 2) * PX_JE_CM, y * PX_JE_CM);
   ctx.restore();
 }
 
@@ -1289,14 +1489,17 @@ function zeichnen(){
   const c = document.getElementById('bild');
   if (!c || !c.getContext) return;
   const s = buehneMasse();
-  const bp = s.b * s.mass, hp = s.h * s.mass;
+  /* Die Rückseite des Canvas läuft in **Gerätepunkten**, die Anzeige in
+     CSS-Punkten. Nur so steht der Detailgrad zur Verfügung, den die
+     gelieferten Grafiken haben. */
+  const bp = Math.round(s.b * PX_JE_CM), hp = Math.round(s.h * PX_JE_CM);
   if (c.width !== bp || c.height !== hp){
     c.width = bp; c.height = hp;
-    c.style.width = bp + 'px';
-    c.style.height = hp + 'px';
-    c.dataset.b = s.b; c.dataset.h = s.h; c.dataset.mass = s.mass;
+    c.style.width = s.breiteCss + 'px';
+    c.style.height = s.hoeheCss + 'px';
+    c.dataset.cmB = s.b; c.dataset.cmH = s.h; c.dataset.dpr = s.dpr;
     const buehne = document.getElementById('buehne');
-    if (buehne) buehne.style.height = hp + 'px';
+    if (buehne) buehne.style.height = s.hoeheCss + 'px';
   }
   const ctx = c.getContext('2d');
   if (!ctx) return;
@@ -1385,6 +1588,10 @@ function alleGaben(){
     gaben.push({ art:'stueck', was:k, text:'Ein neues Kleidungsstück: ' + KLEIDUNG[k].name + '.' }); });
   Object.keys(FRISUREN).forEach(k => { if (!DATA.besitz.frisuren.includes(k))
     gaben.push({ art:'frisur', was:k, text:'Eine neue Frisur: ' + FRISUREN[k].name + '.' }); });
+  Object.keys(SCHUHE).forEach(k => { if (!DATA.besitz.schuhe.includes(k))
+    gaben.push({ art:'schuh', was:k, text:'Schuhe: ' + SCHUHE[k].name + '.' }); });
+  Object.keys(ACCESSOIRES).forEach(k => { if (!DATA.besitz.accessoires.includes(k))
+    gaben.push({ art:'accessoire', was:k, text:'Ein Accessoire: ' + ACCESSOIRES[k].name + '.' }); });
   Object.keys(WANDFARBEN).forEach(k => { if (!DATA.besitz.waende.includes(k))
     gaben.push({ art:'wand', was:k, text:'Tapete in ' + WANDFARBEN[k].name + '.' }); });
   Object.keys(BODENFARBEN).forEach(k => { if (!DATA.besitz.boeden.includes(k))
@@ -1424,6 +1631,9 @@ async function postAnnehmen(i){
   if (p.art === 'kleid' && !DATA.besitz.kleider.includes(p.was)) DATA.besitz.kleider.push(p.was);
   if (p.art === 'stueck' && !DATA.besitz.stuecke.includes(p.was))  DATA.besitz.stuecke.push(p.was);
   if (p.art === 'frisur' && !DATA.besitz.frisuren.includes(p.was)) DATA.besitz.frisuren.push(p.was);
+  if (p.art === 'schuh' && !DATA.besitz.schuhe.includes(p.was)) DATA.besitz.schuhe.push(p.was);
+  if (p.art === 'accessoire' && !DATA.besitz.accessoires.includes(p.was))
+    DATA.besitz.accessoires.push(p.was);
   if (p.art === 'wand'  && !DATA.besitz.waende.includes(p.was))  DATA.besitz.waende.push(p.was);
   if (p.art === 'boden' && !DATA.besitz.boeden.includes(p.was))  DATA.besitz.boeden.push(p.was);
   if (p.art === 'bett'  && !DATA.besitz.bett.includes(p.was))    DATA.besitz.bett.push(p.was);
@@ -1451,6 +1661,7 @@ function fensterOeffnen(titel, aufbau){
 
 function fensterSchliessen(){
   state.offen = null;
+  state.platzieren = null;
   state.auswahl = [];
   document.getElementById('modal').hidden = true;
   render();
@@ -1868,6 +2079,9 @@ function fensterEinrichten(){
       if (!besitz.length) blatt.appendChild(h('div', { class:'leer',
         text:'Noch nichts da — kommt mit der Post.' }));
     }
+    blatt.appendChild(h('div', { class:'zeile' },
+      h('button', { class:'taste haupt breit', id:'platzierenbtn', text:'GENAU PLATZIEREN',
+                    onclick: fensterPlatzieren })));
     blatt.appendChild(waehler('TAPETE',
       DATA.besitz.waende.map(id => ({ id, name: WANDFARBEN[id].name, farbe: WANDFARBEN[id].farben[1] })),
       id => r.wand === id,
@@ -1882,6 +2096,98 @@ function fensterEinrichten(){
       DATA.besitz.boeden.map(id => ({ id, name: BODENFARBEN[id].name, farbe: BODENFARBEN[id].farben[0] })),
       id => r.boden === id,
       async id => { r.boden = id; await persist(); fensterEinrichten(); render(); }));
+  });
+}
+
+/* ---------- Genau platzieren ----------
+   Ein Gegenstand wird gewählt, dann tippt man auf die Bühne: dorthin
+   kommt seine Unterkante, mittig unter den Finger. Die Pfeile schieben
+   um einen Zentimeter. Alles in Zentimetern, weil das die Einheit ist,
+   in der die Welt gemessen wird.
+
+   Die Zahlen lassen sich ausgeben — so kannst du sie mir schicken, und
+   ich trage sie fest ein. */
+
+function dingeImRaum(raum){
+  const liste = (EINRICHTUNG[raum] || []).map(m => ({ name: m.s, sprite: MOEBEL[m.s] }));
+  if (raum === 'kueche') liste.push({ name: 'deko_pflanze', sprite: null });
+  return liste;
+}
+
+function platzVon(raum, name, s){
+  const eigen = eigenerPlatz(raum, name);
+  if (eigen) return eigen;
+  const bodenY = s.h - bodenbandCm(s);
+  const m = (EINRICHTUNG[raum] || []).find(x => x.s === name);
+  if (m) return platzierenCm(m, s, bodenY, raum);
+  return { x: s.b - breiteCm(name, null) - 30, unten: bodenY + 2 };
+}
+
+async function platzSetzen(raum, name, x, unten){
+  if (!DATA.plaetze[raum]) DATA.plaetze[raum] = {};
+  DATA.plaetze[raum][name] = { x: Math.round(x * 10) / 10, unten: Math.round(unten * 10) / 10 };
+  await persist();
+  render();
+}
+
+function buehneAngetippt(ev){
+  if (!state.platzieren) return;
+  const c = document.getElementById('bild');
+  const kasten = c.getBoundingClientRect();
+  const s = buehneMasse();
+  // Vom Bildschirmpunkt zum Zentimeter.
+  const xCm = (ev.clientX - kasten.left) / kasten.width * s.b;
+  const yCm = (ev.clientY - kasten.top) / kasten.height * s.h;
+  const name = state.platzieren.was;
+  const b = breiteCm(name, MOEBEL[name] || null);
+  platzSetzen(state.raum, name, xCm - b / 2, yCm);
+}
+
+function fensterPlatzieren(){
+  state.offen = 'platzieren';
+  const raum = state.raum;
+  const dinge = dingeImRaum(raum);
+  if (!dinge.length){
+    fensterOeffnen('GENAU PLATZIEREN', blatt => {
+      blatt.appendChild(h('div', { class:'leer',
+        text:'In diesem Raum steht nichts, was sich verschieben ließe.' }));
+    });
+    return;
+  }
+  if (!state.platzieren) state.platzieren = { was: dinge[0].name };
+
+  fensterOeffnen('GENAU PLATZIEREN', blatt => {
+    blatt.appendChild(h('div', { class:'leer',
+      text:'Gegenstand wählen, dann auf das Bild tippen — dorthin kommt seine Unterkante.' }));
+    blatt.appendChild(waehler('WAS',
+      dinge.map(d => ({ id: d.name, name: d.name })),
+      id => state.platzieren.was === id,
+      id => { state.platzieren = { was: id }; fensterPlatzieren(); render(); }));
+
+    const s = buehneMasse();
+    const p = platzVon(raum, state.platzieren.was, s);
+    blatt.appendChild(h('div', { class:'block' },
+      h('div', { class:'blockkopf', id:'platzwert',
+                 text: 'x ' + p.x.toFixed(1) + ' cm · unten ' + p.unten.toFixed(1) + ' cm' }),
+      h('div', { class:'zeile' },
+        ...[['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]].map(([z, dx, dy]) =>
+          h('button', { class:'taste', text: z, 'data-schieb': z, onclick: async () => {
+            const jetzt = platzVon(raum, state.platzieren.was, buehneMasse());
+            await platzSetzen(raum, state.platzieren.was, jetzt.x + dx, jetzt.unten + dy);
+            fensterPlatzieren();
+          } })))));
+
+    blatt.appendChild(h('div', { class:'zeile' },
+      h('button', { class:'taste', id:'platzzurueck', text:'ZURÜCKSETZEN', onclick: async () => {
+        if (DATA.plaetze[raum]) delete DATA.plaetze[raum][state.platzieren.was];
+        await persist(); fensterPlatzieren(); render();
+      } }),
+      h('button', { class:'taste haupt', id:'platzausgeben', text:'ZAHLEN ZEIGEN', onclick: () => {
+        const feld = document.getElementById('platzausgabe');
+        if (feld) feld.textContent = JSON.stringify(DATA.plaetze, null, 1);
+      } })));
+    blatt.appendChild(h('pre', { class:'ausgabe', id:'platzausgabe',
+      text:'Hier erscheinen die Zahlen zum Weitergeben.' }));
   });
 }
 
@@ -1903,6 +2209,19 @@ function fensterAnziehen(){
       DATA.besitz.frisuren.map(id => ({ id, name: FRISUREN[id].name })),
       id => DATA.outfit.frisur === id,
       async id => { DATA.outfit.frisur = id; await pflegen({ laune: 3, sagt: 'Neue Frisur!' });
+                    fensterAnziehen(); }));
+    blatt.appendChild(waehler('SCHUHE',
+      DATA.besitz.schuhe.map(id => ({ id, name: SCHUHE[id].name })),
+      id => DATA.outfit.schuhe === id,
+      async id => { DATA.outfit.schuhe = id;
+                    await pflegen({ laune: 2, sagt: SCHUHE[id].name + '!' });
+                    fensterAnziehen(); }));
+    blatt.appendChild(waehler('ACCESSOIRE',
+      DATA.besitz.accessoires.map(id => ({ id, name: ACCESSOIRES[id].name })),
+      id => DATA.outfit.accessoire === id,
+      async id => { DATA.outfit.accessoire = id;
+                    await pflegen({ laune: 3, sagt: id === 'acc_keins' ? 'Ohne, lieber.'
+                                                                        : ACCESSOIRES[id].name + '!' });
                     fensterAnziehen(); }));
     blatt.appendChild(h('div', { class:'leer',
       text:'Die Haarfarbe gehört zu ' + DATA.bella.name + ' — die bleibt.' }));
@@ -2070,6 +2389,8 @@ function allesFreischalten(){
   DATA.besitz.kleider  = Object.keys(KLEIDER);
   DATA.besitz.stuecke  = Object.keys(KLEIDUNG);
   DATA.besitz.frisuren = Object.keys(FRISUREN);
+  DATA.besitz.schuhe   = Object.keys(SCHUHE);
+  DATA.besitz.accessoires = Object.keys(ACCESSOIRES);
   DATA.besitz.waende   = Object.keys(WANDFARBEN);
   DATA.besitz.boeden   = Object.keys(BODENFARBEN);
   DATA.besitz.bett     = Object.keys(BETTZEUG);
@@ -2099,6 +2420,8 @@ async function start(){
   document.getElementById('wohlbtn').onclick = fensterWerte;
   document.getElementById('postbtn').onclick = fensterPost;
   document.getElementById('einrichtenbtn').onclick = fensterEinrichten;
+  const bild = document.getElementById('bild');
+  if (bild) bild.onclick = buehneAngetippt;
   document.getElementById('settingsbtn').onclick = fensterEinstellungen;
 
   if (geliefert) sagen('Die Lieferung ist da: '
