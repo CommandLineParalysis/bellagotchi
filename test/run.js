@@ -28,6 +28,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'KOPF_H','KOERPER_H','SCHUHE','ACCESSOIRES','ZUBEHOER',
                      'MODELL_PX_JE_CM','GROESSEN_CM','BREITEN_CM','ZIMMER','sollPunkte','massPruefen',
                      'moebelDa','MOEBELBILD','maleBellaFigur','maleBellaLiegend',
+                     'SZENE_CM','szenenMasse','nischeMasse','wanneMasse',
                      'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
@@ -547,6 +548,47 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                  .filter(n => !T.moebelDa(n));
     if (ohne.length) throw new Error('ohne Zeichnung: ' + ohne.join(', '));
     return Object.keys(T.MOEBELBILD).length + ' Zeichnungen';
+  });
+
+  /* Die beiden Nahansichten sind gewollt herangezoomt — aber die Szene
+     muss ganz ins Bild passen. Vorher hingen sie am Maßstab des Zimmers
+     und liefen unten heraus, sobald das Zimmer breiter wurde. */
+  await p.check('Nische und Wanne stehen vollständig im Bild', () => {
+    const formate = [[380, 420], [320, 300], [800, 320], [1200, 900], [390, 700]];
+    const zeilen = [];
+    formate.forEach(([bp, hp]) => {
+      const roh = { leinwandB: bp, leinwandH: hp };
+      [['nische', T.nischeMasse], ['wanne', T.wanneMasse]].forEach(([name, masse]) => {
+        const s = T.szenenMasse(roh, T.SZENE_CM[name]);
+        const m = masse(s);
+        if (m.links < 0 || m.rechts > s.b)
+          throw new Error(name + ' bei ' + bp + '×' + hp + ': seitlich angeschnitten ('
+                        + m.links.toFixed(0) + '…' + m.rechts.toFixed(0) + ' von ' + s.b + ')');
+        if (m.oben < 0 || m.unten > s.h)
+          throw new Error(name + ' bei ' + bp + '×' + hp + ': oben/unten angeschnitten ('
+                        + m.oben.toFixed(0) + '…' + m.unten.toFixed(0) + ' von ' + s.h.toFixed(0) + ')');
+        // Herangezoomt heißt: enger als ein ganzes Zimmer.
+        // Herangezoomt: auf einem Handy-Format enger als ein ganzes Zimmer.
+        if (hp >= bp && !(s.b < T.ZIMMER.breiteCm))
+          throw new Error(name + ' ist nicht mehr herangezoomt: ' + s.b + ' cm');
+        if (bp === 380) zeilen.push(name + ' ' + s.b + '×' + s.h.toFixed(0) + ' cm');
+      });
+    });
+    return zeilen.join(' · ');
+  });
+
+  /* Der Maßstab der Szene ist enger, die Größenverhältnisse sind
+     dieselben: Bellas Kopf ist hier wie im Zimmer 42 cm. */
+  await p.check('In der Nahansicht gilt derselbe Maßstab', () => {
+    const roh = { leinwandB: 1170, leinwandH: 1260 };
+    const zimmer = T.buehneMasse();
+    const szene = T.szenenMasse(roh, T.SZENE_CM.wanne);
+    if (!(szene.mass > zimmer.mass))
+      throw new Error('die Nahansicht zeigt nicht mehr Punkte je cm');
+    const kopfCm = T.GROESSEN_CM.bella * 0.247;
+    return 'Kopf ' + kopfCm.toFixed(0) + ' cm: im Zimmer '
+         + Math.round(kopfCm * zimmer.mass) + ' Punkte, in der Wanne '
+         + Math.round(kopfCm * szene.mass) + ' Punkte';
   });
 
   await p.check('Bella ist siebenmal so hoch wie die Pflanze', () => {
