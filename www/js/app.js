@@ -1370,22 +1370,28 @@ function maleNischeninhalt(ctx, s, n){
 function maleBadeszene(ctx, s){
   const z = badFarben();
   const mx = Math.round(s.b / 2);
-
-  px(ctx, s, 0, 0, s.b, s.h, '#EFEAF0');
-  // Fliesenfugen, nur angedeutet.
-  for (let y = 0; y < Math.round(s.h * 0.32); y += 9) px(ctx, s, 0, y, s.b, 1, '#E2DAE6');
-  for (let x = 0; x < s.b; x += 14) px(ctx, s, x, 0, 1, Math.round(s.h * 0.32), '#E2DAE6');
-
-  /* Die Wanne sitzt mit Abstand zu allen vier Rändern: sie soll ganz im
-     Bild stehen, nicht angeschnitten. */
   const w = wanneMasse(s);
   const wy = w.wy, rx = w.rx, ry = w.ry, my = w.my;
 
-  /* Je Badezusatz eine eigene gemalte Wanne — das Wasser ist darin schon
-     drin. Nichts wird umgefärbt; gewechselt wird die Datei. Liegt keine
-     vor, wird wie bisher gezeichnet und getönt. */
-  const gemalteWanne = maleBildNachMass(ctx, s, 'wanne_' + DATA.bad.zusatz,
-                                        mx - rx, my + ry);
+  /* Wie im Schlafzimmer: ein einziges Bild für die ganze Szene — Wand,
+     Fliesen, Wanne, Wasser, Blasen. Je Badezusatz eine eigene Fassung,
+     weil sich damit die Farbe des Wassers ändert. Liegt sie vor, wird
+     nichts davon mehr gezeichnet; darüber kommen nur noch Bella, der
+     Schaum, die Dusche und das Spielzeug. */
+  const szenenPlatz = 'szene_wanne_' + DATA.bad.zusatz;
+  const gemalteSzene = maleFlaeche(ctx, s, szenenPlatz, 0, 0, s.b, s.h, true, s.b);
+
+  if (!gemalteSzene){
+    px(ctx, s, 0, 0, s.b, s.h, '#EFEAF0');
+    // Fliesenfugen, nur angedeutet.
+    for (let y = 0; y < Math.round(s.h * 0.32); y += 9) px(ctx, s, 0, y, s.b, 1, '#E2DAE6');
+    for (let x = 0; x < s.b; x += 14) px(ctx, s, x, 0, 1, Math.round(s.h * 0.32), '#E2DAE6');
+  }
+
+  /* Je Badezusatz auch einzeln: nur die Wanne, auf mein Badezimmer
+     gesetzt. Für alle, die nicht die ganze Szene malen wollen. */
+  const gemalteWanne = gemalteSzene ||
+    maleBildNachMass(ctx, s, 'wanne_' + DATA.bad.zusatz, mx - rx, my + ry);
   if (!gemalteWanne){
     ellipse(ctx, s, mx, my, rx, ry, '#C9C2CE');
     ellipse(ctx, s, mx, my - 1, rx - 1, ry - 1, '#FFFFFF');
@@ -1408,6 +1414,8 @@ function maleBadeszene(ctx, s){
      `blase_<zusatz>` dazu; dann kommen sie wieder, aber als sein Bild. */
   const blasenPlatz = 'blase_' + DATA.bad.zusatz;
   const blasenZeichnen = !gemalteWanne || bildDa(blasenPlatz);
+  // Auch der Dampf gehört zum Bild, wenn die ganze Szene gemalt ist.
+  const dampfZeichnen = !gemalteSzene;
   const zufall = streuFolge('blasen' + DATA.bad.zusatz);
   for (let i = 0; blasenZeichnen && i < 14; i++){
     const winkel = zufall() * Math.PI * 2, r = Math.sqrt(zufall());
@@ -1427,7 +1435,7 @@ function maleBadeszene(ctx, s){
 
   // Dampf über dem Wasser.
   const dampf = streuFolge('dampf');
-  for (let i = 0; i < 3; i++){
+  for (let i = 0; dampfZeichnen && i < 3; i++){
     let dx = wmx - 16 + i * 16, dy = wmy - wry - 2;
     for (let k = 0; k < 8; k++){
       px(ctx, s, dx, dy - k * 3, 1, 2, 'rgba(255,255,255,.55)');
@@ -3139,6 +3147,7 @@ function bildplaetzeAnmelden(){
      gemalt. Dazu je Zusatz eine Blase, falls die auch von Hand kommen
      soll; fehlt sie, wird weiter die gezeichnete genommen. */
   Object.keys(BADEZUSAETZE).forEach(z => {
+    bildplatzAnlegen('szene_wanne_' + z);
     bildplatzAnlegen('wanne_' + z);
     bildplatzAnlegen('blase_' + z);
   });

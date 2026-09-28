@@ -110,33 +110,45 @@ In `vorlagen/` liegen leere Dateien in genau diesen Maßen, dazu je eine
 wo welches Möbelstück steht. Zum Draufschauen beim Malen, nicht zum
 Mitspeichern.
 
-## Badewanne — Wasser und Blasen
+## Badezimmer — ein Bild je Badezusatz
 
-Du malst **eine Wanne je Badezusatz, mit dem Wasser schon darin**. Es
-wird nichts umgefärbt; gewechselt wird die Datei.
+Wie im Schlafzimmer: **eine Datei mit Wand, Wanne, Wasser und Blasen
+zusammen** — und davon eine Fassung je Badezusatz, denn damit ändert
+sich die Farbe des Wassers.
 
 | Plätze | Empfohlene Größe |
 |---|---|
-| `wanne_klar`, `wanne_rosen`, `wanne_minze`, `wanne_lavendel`, `wanne_zitrone`, `wanne_galaxie` | **1064 × 728 px** (190 × 130 cm) |
-| `blase_klar` … `blase_galaxie` (nur falls gewollt) | 30–60 px, quadratisch |
+| `szene_wanne_klar`, `szene_wanne_rosen`, `szene_wanne_minze`, `szene_wanne_lavendel`, `szene_wanne_zitrone`, `szene_wanne_galaxie` | **1064 × 1200 px** (190 × 214 cm) |
 
-Die Form ist dir überlassen — eckig, oval, mit Füßen. Sie muss nicht in
-mein Oval passen.
+Liegt so eine Datei, wird von meinem gezeichneten Bad **nichts** mehr
+gezeigt: keine Fliesen, keine Wanne, kein Wasser, keine Blasen, kein
+Dampf. Das Bild ist die ganze Szene.
 
-**Die Blasen malst du mit in die Wanne.** Sobald eine `wanne_…`-Datei
-da ist, zeichnet die App keine Blasen mehr darüber — deine sind ja schon
-drin. Nur wer bewegte Blasen will, legt zusätzlich `blase_<zusatz>` dazu;
-dann kommen sie wieder, aber als sein eigenes Bild. Ohne gemalte Wanne
-bleiben meine gezeichneten, in der Farbe des Badezusatzes.
+Verankert wird unten mittig, mit Randfortsetzung wie überall. Die 1200 px
+Höhe decken alle Handys ab.
+
+**Darüber** liegen nur noch: Bella mit dem Schaum, die Dusche beim
+Abbrausen, das Planschen und das Badespielzeug. Alles davon lässt sich
+frei setzen.
 
 ### Die Wasserfläche einstellen
 
 Weil deine Wanne anders geformt ist, kann die App nicht raten, wo das
-Wasser liegt. Daran hängen **Blasen, Dampf, Spielzeug, Bella und das
-Planschen**. Deshalb: Stift oben rechts → **Genau platzieren** →
+Wasser liegt. Daran hängen **Bella, das Spielzeug, das Planschen und die
+Dusche**. Deshalb: Stift oben rechts → **Genau platzieren** →
 `zone_wasser`. Mit den Pfeilen verschieben, mit BREITER/SCHMALER/
 HÖHER/FLACHER an deine Wanne anpassen. Im Platzierungs-Modus ist die
 Fläche als gestrichelter Rahmen zu sehen.
+
+### Nur die Wanne austauschen
+
+Wer mein Badezimmer behalten und bloß die Wanne ersetzen will, nimmt
+stattdessen `wanne_klar` … `wanne_galaxie` (etwa 1064 × 728 px). Dann
+bleiben Fliesen und Wand gezeichnet. Auch dort malst du die Blasen mit
+hinein; die App legt keine mehr darüber.
+
+Wer bewegte Blasen will, legt zusätzlich `blase_<zusatz>` dazu (30–60 px,
+quadratisch) — dann kommen sie wieder, aber als sein eigenes Bild.
 
 ## Schlafzimmer — ein Bild für alles
 
