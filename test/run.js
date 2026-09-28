@@ -20,7 +20,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'FRUEHESTENS_MIN','lieferzeit','lieferungPruefen','BESTELLMENGE',
                      'LIEFERSTUNDE','BADEZUSAETZE','BETTZEUG','BADSPIELZEUG','buehneMasse',
                      'szeneWeiter','kochszenePhase','zeitgesteuertes','duscheAnteil',
-                     'KOCHSCHRITTE','BILDPLAETZE','bildDa','DUSCHE_DAUER']);
+                     'KOCHSCHRITTE','BILDPLAETZE','bildDa','DUSCHE_DAUER',
+                     'SNACKS','snacksDa','snackEssen','TAGESMENGE','bestellRest',
+                     'heuteSchluessel','bestellungVermerken','HAARE','WANDFARBEN',
+                     'BODENFARBEN','alleGaben']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -394,6 +397,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   await p.check('Zutaten bestellen ist kostenlos und kommt am nächsten Tag', async () => {
     T.DATA.bestellung = null;
+    T.DATA.bestelltHeute = { tag:'', anzahl:0 };
     T.DATA.vorrat.honig = 0;
     click(tab('kueche'));
     await wait(25);
@@ -403,12 +407,12 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     await wait(25);
     click($('#bestellen'));
     await wait(40);
-    if (!T.DATA.bestellung) throw new Error('nichts bestellt');
+    if (!T.DATA.bestellung || !T.DATA.bestellung.length) throw new Error('nichts bestellt');
     if (T.DATA.vorrat.honig !== 0) throw new Error('sofort geliefert');
-    const liefert = new Date(T.DATA.bestellung.liefert);
+    const liefert = new Date(T.DATA.bestellung[0].liefert);
     if (liefert.getHours() !== T.LIEFERSTUNDE) throw new Error('Lieferstunde: ' + liefert.getHours());
     if (!(liefert > new Date())) throw new Error('Lieferung liegt in der Vergangenheit');
-    return 'Honig, geliefert ' + liefert.toLocaleDateString('de') + ' um ' + T.LIEFERSTUNDE + ':00';
+    return 'Honig, geliefert um ' + T.LIEFERSTUNDE + ':00';
   });
 
   await p.check('Die Lieferung landet zur rechten Zeit im Vorrat', () => {
@@ -422,13 +426,122 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     return 'eine Stunde vorher nichts, danach +1 Honig';
   });
 
-  await p.check('Nur eine Bestellung auf einmal', async () => {
-    T.DATA.bestellung = { liefert: T.lieferzeit(new Date()).toISOString(), waren: { mehl: 1 } };
+  await p.check('Höchstens fünf Zutaten am Tag, über beliebig viele Bestellungen', async () => {
+    T.DATA.bestellung = null;
+    T.DATA.bestelltHeute = { tag:'', anzahl:0 };
+    if (T.bestellRest() !== T.TAGESMENGE) throw new Error('Start: ' + T.bestellRest());
+
+    // Drei bestellen, dann noch einmal drei — das zweite Mal geht nur
+    // noch zwei weit.
+    const bestelle = async wie => {
+      click(taste('BESTELLEN'));
+      await wait(30);
+      for (let i = 0; i < wie; i++){
+        click($$('#bestellgitter .stueck').find(b => b.dataset.bestell === 'mehl'));
+        await wait(15);
+      }
+      click($('#bestellen'));
+      await wait(40);
+    };
+    await bestelle(3);
+    if (T.bestellRest() !== 2) throw new Error('nach 3: ' + T.bestellRest() + ' frei');
+    await bestelle(3);
+    if (T.bestellRest() !== 0) throw new Error('nach 3+3: ' + T.bestellRest() + ' frei');
+    const gesamt = T.DATA.bestellung.reduce((n, b) =>
+      n + Object.values(b.waren).reduce((m, x) => m + x, 0), 0);
+    if (gesamt !== T.TAGESMENGE) throw new Error('insgesamt bestellt: ' + gesamt);
+
+    // Jetzt ist zu.
     T.render();
     await wait(25);
-    if (!taste('BESTELLT')) throw new Error('zweite Bestellung möglich');
+    if (!taste('HEUTE VOLL')) throw new Error('der Knopf lädt weiter zum Bestellen ein');
+    return '3 + 2 von ' + T.TAGESMENGE + ', dann zu';
+  });
+
+  await p.check('Am nächsten Tag geht es wieder', () => {
+    const gestern = new Date(Date.now() - 86400000);
+    T.DATA.bestelltHeute = { tag: T.heuteSchluessel(gestern), anzahl: T.TAGESMENGE };
+    if (T.bestellRest() !== T.TAGESMENGE)
+      throw new Error('gestriges Limit gilt weiter: ' + T.bestellRest());
+    T.DATA.bestelltHeute = { tag:'', anzahl:0 };
     T.DATA.bestellung = null;
-    return 'der Knopf zeigt den Stand statt neu zu bestellen';
+    return 'der Zähler hängt am Kalendertag';
+  });
+
+  /* --- Snacks --- */
+
+  await p.check('Snacks sind fertig und werden nicht gekocht', async () => {
+    Object.keys(T.SNACKS).forEach(k => { T.DATA.snacks[k] = 0; });
+    T.DATA.snacks.schoki = 2;
+    T.DATA.bella.satt = 40;
+    T.render();
+    await wait(25);
+    // Snacks tauchen nicht als Zutat und nicht als Rezept auf.
+    if (T.ZUTATEN.schoki) throw new Error('Snack steht unter den Zutaten');
+    if (T.REZEPTE.some(r => r.aus.includes('schoki'))) throw new Error('Snack in einem Rezept');
+    const knopf = $$('#tasten .taste').find(t => /^SNACK/.test(t.textContent));
+    if (!knopf) throw new Error('kein Snack-Knopf');
+    if (!/\(2\)/.test(knopf.textContent)) throw new Error('Anzahl fehlt: ' + knopf.textContent);
+    click(knopf);
+    await wait(30);
+    click($$('#snackgitter .stueck').find(b => b.dataset.snack === 'schoki'));
+    await wait(40);
+    if (T.DATA.snacks.schoki !== 1) throw new Error('nicht verbraucht: ' + T.DATA.snacks.schoki);
+    if (T.DATA.bella.satt <= 40) throw new Error('nicht satter');
+    return 'Schokolade gegessen, satt ' + Math.round(T.DATA.bella.satt);
+  });
+
+  await p.check('Ohne Snacks bleibt der Knopf abgeblendet', async () => {
+    Object.keys(T.SNACKS).forEach(k => { T.DATA.snacks[k] = 0; });
+    T.render();
+    await wait(25);
+    const knopf = $$('#tasten .taste').find(t => /^SNACK/.test(t.textContent));
+    if (!knopf.classList.contains('aus')) throw new Error('Knopf sieht bedienbar aus');
+    click(knopf);
+    await wait(25);
+    if (T.state.offen === 'snacks') throw new Error('leeres Snackfenster geht auf');
+    return 'abgeblendet, mit Hinweis auf die Post';
+  });
+
+  await p.check('Snacks kommen mit der Post', () => {
+    T.DATA.post.length = 0;
+    const b = T.DATA.bella;
+    b.satt = 90; b.sauber = 90; b.ausgeruht = 90; b.laune = 90;
+    // Alles freigeschaltet: dann kann die Post nur noch Snacks bringen.
+    T.DATA.besitz.kleider = Object.keys(T.KLEIDER);
+    T.DATA.besitz.haare = Object.keys(T.HAARE);
+    T.DATA.besitz.waende = Object.keys(T.WANDFARBEN);
+    T.DATA.besitz.boeden = Object.keys(T.BODENFARBEN);
+    T.DATA.besitz.bett = Object.keys(T.BETTZEUG);
+    T.DATA.besitz.bad = Object.keys(T.BADSPIELZEUG);
+    T.DATA.besitz.zusaetze = Object.keys(T.BADEZUSAETZE);
+    if (T.alleGaben().length) throw new Error('Testaufbau: noch etwas freizuschalten');
+    T.postPruefen(48 * 60);
+    if (!T.DATA.post.length) throw new Error('nichts gekommen');
+    const fremd = T.DATA.post.filter(p => p.art !== 'snack');
+    if (fremd.length) throw new Error('etwas anderes als Snacks: ' + fremd[0].art);
+    return T.DATA.post.length + ' Snackpäckchen';
+  });
+
+  await p.check('Ausgepackt landet der Snack im Vorrat', async () => {
+    const gabe = T.DATA.post[0];
+    const vorher = T.DATA.snacks[gabe.was] || 0;
+    click($('#postbtn'));
+    await wait(25);
+    click($$('#modalblatt .taste')[0]);
+    await wait(40);
+    if ((T.DATA.snacks[gabe.was] || 0) <= vorher) throw new Error('nicht im Vorrat');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    // Für die folgenden Prüfungen wieder etwas zum Freischalten lassen.
+    T.DATA.besitz.kleider = ['rosenrot'];
+    T.DATA.besitz.haare = ['beere'];
+    T.DATA.besitz.waende = ['flieder'];
+    T.DATA.besitz.boeden = ['eiche'];
+    T.DATA.besitz.bett = ['kissen_a'];
+    T.DATA.besitz.bad = [];
+    T.DATA.besitz.zusaetze = ['klar'];
+    return gabe.text;
   });
 
   /* --- Post --- */
@@ -446,8 +559,12 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   });
 
   await p.check('Ausgepackt landet das Geschenk im Besitz', async () => {
-    const gabe = T.DATA.post.find(g => g.art === 'kleid' || g.art === 'wand' || g.art === 'haar' || g.art === 'boden');
-    if (!gabe) throw new Error('nur Zutaten in der Post');
+    // Snacks kommen auch, deshalb so lange nachlegen, bis ein
+    // Sammelstück dabei ist.
+    for (let i = 0; i < 12 && !T.DATA.post.some(g => /kleid|wand|haar|boden/.test(g.art)); i++)
+      T.postPruefen(48 * 60);
+    const gabe = T.DATA.post.find(g => /^(kleid|wand|haar|boden)$/.test(g.art));
+    if (!gabe) throw new Error('kein Sammelstück in der Post');
     const topf = { kleid:'kleider', haar:'haare', wand:'waende', boden:'boeden' }[gabe.art];
     const i = T.DATA.post.indexOf(gabe);
     click($('#postbtn'));

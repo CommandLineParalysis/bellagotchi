@@ -69,7 +69,15 @@ darüber, ihre Punkte stehen in `ANKER` als Anteil der Bühne.
 - **Gewaschen wird nur gebadet:** einschäumen, dann abbrausen. Der Schaum
   steht in `state`, nicht im Bestand, und wird beim Raumwechsel gelöscht.
 - **Bestellt wird kostenlos, geliefert am nächsten Tag um 9.** Das ist die
-  Geduld statt eines Preises. Immer nur eine Bestellung.
+  Geduld statt eines Preises. Höchstens `TAGESMENGE` Zutaten je
+  Kalendertag, über beliebig viele Bestellungen — das Limit hängt am Tag,
+  nicht an der Bestellung, sonst ließe sich fünfmal fünf ordern.
+  `DATA.bestellung` ist deshalb eine **Liste** offener Lieferungen.
+- **Snacks kocht man nicht.** Sie sind fertig, kommen ausschließlich mit
+  der Post und stehen in einem eigenen Vorrat (`DATA.snacks`). Sie machen
+  weniger satt als ein gekochtes Gericht — das ist der Grund, trotzdem zu
+  kochen. Die Post bringt sie auch dann noch, wenn alles andere
+  freigeschaltet ist: sie sind Verbrauchsgut, kein Sammelstück.
 - **Es liegt nichts über der Szene.** Früher lag ein Rasterpunkt-Überzug
   als Nachtstimmung über jedem Zimmer; der hat jede Grafik zugedeckt.
   `tageszeit()` gibt es weiter, aber sie färbt nichts mehr ein. Die

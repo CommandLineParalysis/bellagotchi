@@ -45,6 +45,8 @@ function leererVault(){
               boeden: ['eiche','perle','beere'],
               bett: ['kissen_a'], bad: [], zusaetze: ['klar'] },
     vorrat: { erdbeere: 3, milch: 2, mehl: 2, honig: 1, beere: 2, ei: 2 },
+    snacks: { keks: 2, apfel: 1 },
+    bestelltHeute: { tag: '', anzahl: 0 },
     kochbuch: [],
     post: [],
     gesprochen: [],
@@ -73,9 +75,9 @@ const state = {
 
 function vaultPayload(){
   const v = {};
-  for (const k of ['bella','bad','bestellung','outfit','zeiten','raeume','besitz','vorrat',
-                   'kochbuch','post','gesprochen','erinnerungen','stand','letzterBesuch',
-                   'modus','backup']) v[k] = DATA[k];
+  for (const k of ['bella','bad','bestellung','bestelltHeute','outfit','zeiten','raeume',
+                   'besitz','vorrat','snacks','kochbuch','post','gesprochen','erinnerungen',
+                   'stand','letzterBesuch','modus','backup']) v[k] = DATA[k];
   return v;
 }
 
@@ -104,9 +106,12 @@ function adoptVault(saved){
     zugedeckt: !!b.zugedeckt,
   };
   v.bad = { zusatz: BADEZUSAETZE[(saved.bad || {}).zusatz] ? saved.bad.zusatz : 'klar' };
-  const be = saved.bestellung;
-  v.bestellung = (be && typeof be.liefert === 'string' && be.waren && typeof be.waren === 'object')
-    ? { liefert: be.liefert, waren: be.waren } : null;
+  const roh = Array.isArray(saved.bestellung) ? saved.bestellung
+            : (saved.bestellung ? [saved.bestellung] : []);
+  const echt = roh.filter(b => b && typeof b.liefert === 'string'
+                            && b.waren && typeof b.waren === 'object')
+                  .map(b => ({ liefert: b.liefert, waren: b.waren }));
+  v.bestellung = echt.length ? echt : null;
   const o = saved.outfit || {};
   v.outfit = { kleid: KLEIDER[o.kleid] ? o.kleid : 'rosenrot',
                haar:  HAARE[o.haar]   ? o.haar  : 'beere' };
@@ -149,6 +154,13 @@ function adoptVault(saved){
   Object.keys(ZUTATEN).forEach(k => {
     v.vorrat[k] = zahl((saved.vorrat || {})[k], 0, 0, 99);
   });
+  v.snacks = {};
+  Object.keys(SNACKS).forEach(k => {
+    v.snacks[k] = zahl((saved.snacks || {})[k], 0, 0, 99);
+  });
+  const bh = saved.bestelltHeute || {};
+  v.bestelltHeute = { tag: typeof bh.tag === 'string' ? bh.tag : '',
+                      anzahl: zahl(bh.anzahl, 0, 0, 99) };
   v.kochbuch = (saved.kochbuch || []).filter(id => REZEPTE.some(r => r.id === id));
   v.post = (saved.post || []).filter(p => p && typeof p.art === 'string')
     .map(p => ({ art: String(p.art), was: String(p.was || ''), text: String(p.text || '') }));
@@ -203,7 +215,30 @@ const REZEPTE = [
    Geduld statt eines Preises: man muss vorher daran denken, nicht
    sparen. */
 const LIEFERSTUNDE = 9;
-const BESTELLMENGE = 3;
+
+/* Fünf Zutaten am Tag, über beliebig viele Bestellungen. Das Limit
+   hängt am Kalendertag, nicht an der Bestellung — sonst könnte man
+   fünfmal hintereinander fünf ordern. */
+const TAGESMENGE = 5;
+
+function heuteSchluessel(jetzt){
+  const d = new Date(jetzt || Date.now());
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+       + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* Wie viel heute noch geht. Ein neuer Tag setzt den Zähler zurück. */
+function bestellRest(jetzt){
+  const heute = heuteSchluessel(jetzt);
+  if (DATA.bestelltHeute.tag !== heute) return TAGESMENGE;
+  return Math.max(0, TAGESMENGE - DATA.bestelltHeute.anzahl);
+}
+
+function bestellungVermerken(anzahl, jetzt){
+  const heute = heuteSchluessel(jetzt);
+  if (DATA.bestelltHeute.tag !== heute) DATA.bestelltHeute = { tag: heute, anzahl: 0 };
+  DATA.bestelltHeute.anzahl += anzahl;
+}
 
 function lieferzeit(jetzt){
   const d = new Date(jetzt);
@@ -212,19 +247,26 @@ function lieferzeit(jetzt){
   return d;
 }
 
-/* Ist die Lieferung fällig, wandert sie in den Vorrat. */
+/* Ist eine Lieferung fällig, wandert sie in den Vorrat. Es können
+   mehrere offen sein — am Tageslimit hängt die Menge, nicht die Zahl
+   der Bestellungen. */
 function lieferungPruefen(jetzt){
-  const b = DATA.bestellung;
-  if (!b) return null;
-  if (new Date(jetzt || Date.now()) < new Date(b.liefert)) return null;
+  const offen = Array.isArray(DATA.bestellung) ? DATA.bestellung
+              : (DATA.bestellung ? [DATA.bestellung] : []);
+  if (!offen.length) return null;
+  const nun = new Date(jetzt || Date.now());
   const geliefert = {};
-  Object.entries(b.waren).forEach(([id, n]) => {
-    if (!ZUTATEN[id]) return;
-    DATA.vorrat[id] = Math.min(99, (DATA.vorrat[id] || 0) + n);
-    geliefert[id] = n;
+  const bleibt = [];
+  offen.forEach(b => {
+    if (nun < new Date(b.liefert)){ bleibt.push(b); return; }
+    Object.entries(b.waren).forEach(([id, n]) => {
+      if (!ZUTATEN[id]) return;
+      DATA.vorrat[id] = Math.min(99, (DATA.vorrat[id] || 0) + n);
+      geliefert[id] = (geliefert[id] || 0) + n;
+    });
   });
-  DATA.bestellung = null;
-  return geliefert;
+  DATA.bestellung = bleibt.length ? bleibt : null;
+  return Object.keys(geliefert).length ? geliefert : null;
 }
 
 /* ---------- Bad ----------
@@ -238,6 +280,20 @@ const BADEZUSAETZE = {
   lavendel: { name:'Lavendel',  wasser:['#E0D2FF','#B79BF0','#8562C9'], blase:'#B79BF0', blaseHell:'#F2EAFF' },
   zitrone:  { name:'Zitrone',   wasser:['#FFF3BF','#FFE070','#D9B52E'], blase:'#FFE070', blaseHell:'#FFFAE0' },
   galaxie:  { name:'Galaxie',   wasser:['#6E6BC8','#4B3F9E','#2A1F63'], blase:'#A88FFF', blaseHell:'#E0D4FF' },
+};
+
+/* Snacks sind fertig — man kocht sie nicht, man hat sie oder nicht.
+   Sie kommen ausschließlich mit der Post; das ist der Unterschied zur
+   Küche, wo man aus Zutaten etwas macht. */
+const SNACKS = {
+  keks:      { name:'Keks',       satt:12, laune:6,  farbe:'#D8A467' },
+  schoki:    { name:'Schokolade', satt:14, laune:10, farbe:'#8A5B2E' },
+  apfel:     { name:'Apfel',      satt:10, laune:4,  farbe:'#FF5C5C' },
+  brezel:    { name:'Brezel',     satt:15, laune:5,  farbe:'#C98B5A' },
+  lutscher:  { name:'Lutscher',   satt:6,  laune:13, farbe:'#FF4FA3' },
+  joghurt:   { name:'Joghurt',    satt:13, laune:7,  farbe:'#BEE6FF' },
+  nuesse:    { name:'Nüsse',      satt:16, laune:3,  farbe:'#A3703F' },
+  gummibaer: { name:'Gummibären', satt:8,  laune:12, farbe:'#4BE38A' },
 };
 
 const BADSPIELZEUG = {
@@ -1258,9 +1314,12 @@ function postPruefen(vergangeneMinuten){
   for (let i = 0; i < anlaeufe; i++){
     if (DATA.post.length >= 3) break;
     const offen = alleGaben().filter(g => !DATA.post.some(p => p.art === g.art && p.was === g.was));
-    if (!offen.length){
-      const z = Object.keys(ZUTATEN)[Math.floor(Math.random() * Object.keys(ZUTATEN).length)];
-      DATA.post.push({ art:'zutat', was:z, text:'Ein Körbchen ' + ZUTATEN[z].name + '.' });
+    /* Snacks kommen immer wieder, auch wenn schon alles freigeschaltet
+       ist — sie sind Verbrauchsgut, kein Sammelstück. */
+    if (!offen.length || Math.random() < .45){
+      const namen = Object.keys(SNACKS);
+      const sn = namen[Math.floor(Math.random() * namen.length)];
+      DATA.post.push({ art:'snack', was:sn, text:'Ein Päckchen ' + SNACKS[sn].name + '.' });
       continue;
     }
     DATA.post.push(offen[Math.floor(Math.random() * offen.length)]);
@@ -1279,6 +1338,7 @@ async function postAnnehmen(i){
   if (p.art === 'bad'   && !DATA.besitz.bad.includes(p.was))     DATA.besitz.bad.push(p.was);
   if (p.art === 'zusatz'&& !DATA.besitz.zusaetze.includes(p.was))DATA.besitz.zusaetze.push(p.was);
   if (p.art === 'zutat') DATA.vorrat[p.was] = Math.min(99, (DATA.vorrat[p.was] || 0) + 3);
+  if (p.art === 'snack') DATA.snacks[p.was] = Math.min(99, (DATA.snacks[p.was] || 0) + 2);
   await pflegen({ laune: 5, sagt: 'Oh! ' + p.text });
   if (state.offen === 'post') fensterPost();
 }
@@ -1537,10 +1597,14 @@ function tastenFuer(raum){
   if (raum === 'kueche'){
     return [
       taste('KOCHEN', schlaeft ? wach('Später.') : fensterKochen, 'haupt'),
-      taste('NASCHEN', schlaeft ? wach('Später.') : () =>
-        pflegen({ satt: 8, laune: 4, sagt: 'Nur ein kleines.' })),
-      taste(DATA.bestellung ? 'BESTELLT' : 'BESTELLEN',
-        DATA.bestellung ? () => { sagen(lieferText()); render(); } : fensterBestellen),
+      taste('SNACK' + (snacksDa() ? ' (' + snacksDa() + ')' : ''),
+        schlaeft ? wach('Später.') : (snacksDa() ? fensterSnacks
+          : () => { sagen('Keine Snacks da. Die kommen mit der Post.'); render(); }),
+        snacksDa() ? '' : 'aus'),
+      taste(bestellRest() ? 'BESTELLEN' : 'HEUTE VOLL',
+        bestellRest() ? fensterBestellen
+          : () => { sagen('Heute schon ' + TAGESMENGE + ' Zutaten bestellt. Morgen wieder.'); render(); },
+        bestellRest() ? '' : 'aus'),
     ];
   }
 
@@ -1600,9 +1664,12 @@ async function zeitgesteuertes(){
 }
 
 function lieferText(){
-  if (!DATA.bestellung) return 'Nichts bestellt.';
-  const d = new Date(DATA.bestellung.liefert);
-  return 'Die Lieferung kommt morgen um ' + String(d.getHours()).padStart(2,'0') + ':00.';
+  const offen = DATA.bestellung || [];
+  if (!offen.length) return 'Nichts bestellt.';
+  const stueck = offen.reduce((n, b) =>
+    n + Object.values(b.waren).reduce((m, x) => m + x, 0), 0);
+  return stueck + ' Zutat' + (stueck === 1 ? '' : 'en') + ' kommen morgen um '
+       + LIEFERSTUNDE + ':00.';
 }
 
 function jetztAlsUhrzeit(){
@@ -1638,8 +1705,8 @@ function extraFuer(raum){
   });
   return [h('div', { class:'block', id:'vorratblock' },
     h('div', { class:'blockkopf', text:'VORRAT' }), vorrat,
-    h('div', { class:'leer', text: DATA.bestellung ? lieferText()
-      : 'Zutaten kannst du kostenlos bestellen — sie kommen am nächsten Tag.' }))];
+    h('div', { class:'leer', text: (DATA.bestellung ? lieferText() + ' ' : '')
+      + 'Heute noch ' + bestellRest() + ' von ' + TAGESMENGE + ' Zutaten frei.' }))];
 }
 
 /* ---------- Fenster hinter den Kopfknöpfen ---------- */
@@ -1714,19 +1781,60 @@ function fensterBadezusatz(){
   });
 }
 
+function snacksDa(){
+  return Object.values(DATA.snacks).reduce((n, x) => n + x, 0);
+}
+
+function fensterSnacks(){
+  state.offen = 'snacks';
+  fensterOeffnen('SNACKS', blatt => {
+    const gitter = h('div', { class:'gitter', id:'snackgitter' });
+    let etwas = false;
+    Object.entries(SNACKS).forEach(([id, sn]) => {
+      const da = DATA.snacks[id] || 0;
+      if (!da) return;
+      etwas = true;
+      gitter.appendChild(h('button', {
+        class:'stueck', 'data-snack': id,
+        onclick: () => snackEssen(id),
+      }, h('span', { class:'farbe', style:'background:' + sn.farbe }),
+         sn.name, h('br'), 'x' + da));
+    });
+    if (!etwas){
+      blatt.appendChild(h('div', { class:'leer',
+        text:'Nichts da. Snacks kommen fertig mit der Post — kochen musst du sie nicht.' }));
+      return;
+    }
+    blatt.appendChild(gitter);
+    blatt.appendChild(h('div', { class:'leer',
+      text:'Fertig gekauft, kommen mit der Post. Machen weniger satt als ein gekochtes Gericht.' }));
+  });
+}
+
+async function snackEssen(id){
+  const sn = SNACKS[id];
+  if (!sn || !(DATA.snacks[id] > 0)) return;
+  DATA.snacks[id]--;
+  fensterSchliessen();
+  await pflegen({ satt: sn.satt, laune: sn.laune, sagt: sn.name + '! Mmh.' });
+}
+
 function fensterBestellen(){
   state.offen = 'bestellen';
   fensterOeffnen('BESTELLEN', blatt => {
+    const rest = bestellRest();
     blatt.appendChild(h('div', { class:'leer',
-      text:'Kostenlos, bis zu ' + BESTELLMENGE + ' Zutaten. Geliefert wird am nächsten Tag um '
-         + LIEFERSTUNDE + ':00.' }));
+      text:'Kostenlos. Heute noch ' + rest + ' von ' + TAGESMENGE + ' Zutaten frei. '
+         + 'Geliefert wird am nächsten Tag um ' + LIEFERSTUNDE + ':00.' }));
     const gitter = h('div', { class:'gitter', id:'bestellgitter' });
     Object.entries(ZUTATEN).forEach(([id, z]) => {
       const wie = state.bestellwahl.filter(x => x === id).length;
       gitter.appendChild(h('button', {
         class:'stueck' + (wie ? ' an' : ''), 'data-bestell': id,
         onclick: () => {
-          if (state.bestellwahl.length >= BESTELLMENGE) state.bestellwahl = [];
+          // Am Tageslimit tut ein weiterer Tipp nichts. Vorher leerte er
+          // den Korb — das sah aus wie ein Fehlgriff.
+          if (state.bestellwahl.length >= rest) return;
           state.bestellwahl = state.bestellwahl.concat(id);
           fensterBestellen();
         },
@@ -1736,19 +1844,26 @@ function fensterBestellen(){
     blatt.appendChild(gitter);
     blatt.appendChild(h('div', { class:'zeile' },
       h('button', {
-        class:'taste haupt breit' + (state.bestellwahl.length ? '' : ' aus'),
+        class:'taste haupt' + (state.bestellwahl.length ? '' : ' aus'),
         id:'bestellen', disabled: state.bestellwahl.length ? null : true,
         text: state.bestellwahl.length ? 'BESTELLEN (' + state.bestellwahl.length + ')' : 'NICHTS GEWÄHLT',
         onclick: bestellen,
-      })));
+      }),
+      state.bestellwahl.length ? h('button', {
+        class:'taste', id:'korbleeren', text:'LEEREN',
+        onclick: () => { state.bestellwahl = []; fensterBestellen(); },
+      }) : null));
   });
 }
 
 async function bestellen(){
-  if (!state.bestellwahl.length) return;
+  const menge = Math.min(state.bestellwahl.length, bestellRest());
+  if (!menge) return;
   const waren = {};
-  state.bestellwahl.forEach(id => { waren[id] = (waren[id] || 0) + 1; });
-  DATA.bestellung = { liefert: lieferzeit(new Date()).toISOString(), waren };
+  state.bestellwahl.slice(0, menge).forEach(id => { waren[id] = (waren[id] || 0) + 1; });
+  const neu = { liefert: lieferzeit(new Date()).toISOString(), waren };
+  DATA.bestellung = (DATA.bestellung || []).concat(neu);
+  bestellungVermerken(menge);
   state.bestellwahl = [];
   fensterSchliessen();
   await pflegen({ laune: 3, sagt: 'Bestellt! ' + lieferText() });
@@ -1815,6 +1930,7 @@ function allesFreischalten(){
   DATA.besitz.bad      = Object.keys(BADSPIELZEUG);
   DATA.besitz.zusaetze = Object.keys(BADEZUSAETZE);
   Object.keys(ZUTATEN).forEach(z => { DATA.vorrat[z] = 9; });
+  Object.keys(SNACKS).forEach(z => { DATA.snacks[z] = 3; });
   DATA.kochbuch = REZEPTE.map(r => r.id);
   if (!DATA.raeume.bad.deko.length) DATA.raeume.bad.deko = Object.keys(BADSPIELZEUG).slice(0, 2);
 }
