@@ -43,6 +43,7 @@ function leererVault(){
     kochbuch: [],
     post: [],
     gesprochen: [],
+    erinnerungen: false,
     stand: jetzt,
     letzterBesuch: jetzt,
     modus: 'hell',
@@ -64,7 +65,8 @@ const state = {
 function vaultPayload(){
   const v = {};
   for (const k of ['bella','outfit','zeiten','raeume','besitz','vorrat','kochbuch',
-                   'post','gesprochen','stand','letzterBesuch','modus','backup']) v[k] = DATA[k];
+                   'post','gesprochen','erinnerungen','stand','letzterBesuch','modus',
+                   'backup']) v[k] = DATA[k];
   return v;
 }
 
@@ -132,6 +134,7 @@ function adoptVault(saved){
   v.post = (saved.post || []).filter(p => p && typeof p.art === 'string')
     .map(p => ({ art: String(p.art), was: String(p.was || ''), text: String(p.text || '') }));
   v.gesprochen = (saved.gesprochen || []).filter(x => typeof x === 'string').slice(-40);
+  v.erinnerungen = !!saved.erinnerungen;
   v.stand = typeof saved.stand === 'string' ? saved.stand : v.stand;
   v.letzterBesuch = typeof saved.letzterBesuch === 'string' ? saved.letzterBesuch : v.letzterBesuch;
   v.modus = saved.modus === 'dunkel' ? 'dunkel' : 'hell';
@@ -383,6 +386,114 @@ function maleRaum(ctx, mass, jetzt){
   }
 
   maleDaemmerung(ctx, mass, jetzt);
+}
+
+/* ---------- Erinnerungen ----------
+   Getrennt in zwei Teile: `erinnerungsPlan` rechnet nur aus, wann was
+   fällig wäre — das lässt sich prüfen, ohne ein Handy zu haben. Erst
+   `erinnerungenStellen` spricht mit Android.
+
+   Alles wird auf dem Gerät geplant. Es geht nichts nach draußen, und
+   ohne die Erlaubnis der Nutzerin passiert gar nichts. */
+
+const ERINNERUNG = {
+  hunger:   { id: 11, titel: 'Hunger', schwelle: 28, wert: 'satt',
+              text: n => n + ' hat Hunger.' },
+  waesche:  { id: 12, titel: 'Badezeit', schwelle: 25, wert: 'sauber',
+              text: n => n + ' würde gern baden.' },
+  wach:     { id: 13, titel: 'Guten Morgen', text: n => n + ' ist aufgewacht.' },
+  vermisst: { id: 14, titel: 'Vermisst dich', text: n => n + ' hat lange niemanden gesehen.' },
+};
+
+/* Nie öfter als das — eine Pflege-App, die einen jagt, ist das Gegenteil
+   von dem, was diese hier sein soll. */
+const FRUEHESTENS_MIN = 90;
+
+/* Abstand zur Aufwach-Meldung, damit nicht zwei auf einmal kommen. */
+const NACH_DEM_WECKEN_MIN = 20;
+
+function naechsteUhrzeit(jetzt, hhmm){
+  const d = new Date(jetzt);
+  const [h, m] = hhmm.split(':').map(Number);
+  d.setHours(h, m, 0, 0);
+  if (d <= jetzt) d.setDate(d.getDate() + 1);
+  return d;
+}
+
+/* Wann fällt ein Wert unter seine Schwelle? Gerechnet mit derselben
+   Zehrung wie im Spiel, damit Meldung und Anzeige nicht auseinandergehen. */
+function faelligAb(jetzt, wert, stand, schwelle){
+  if (stand <= schwelle) return null;         // schon drunter, nicht nachtreten
+  const stunden = (stand - schwelle) / ZEHRUNG[wert];
+  return new Date(jetzt.getTime() + stunden * 3600000);
+}
+
+function erinnerungsPlan(jetzt){
+  const nun = jetzt || new Date();
+  if (!DATA.erinnerungen) return [];
+  const n = DATA.bella.name;
+  const plan = [];
+
+  ['hunger', 'waesche'].forEach(art => {
+    const e = ERINNERUNG[art];
+    let wann = faelligAb(nun, e.wert, DATA.bella[e.wert], e.schwelle);
+    if (!wann) return;
+    /* Fällt es in ihre Nacht, wird es nicht verworfen, sondern auf nach
+       dem Aufwachen geschoben — sonst bekäme man bei vollen Werten nie
+       eine Meldung, weil der Zeitpunkt zwölf Stunden später und damit
+       regelmäßig im Schlaffenster läge. Der Versatz hält sie von der
+       Aufwach-Meldung getrennt. */
+    if (istSchlafzeit(wann)){
+      wann = new Date(naechsteUhrzeit(wann, DATA.zeiten.aufwachen).getTime() + NACH_DEM_WECKEN_MIN * 60000);
+    }
+    if (wann - nun < FRUEHESTENS_MIN * 60000) return;
+    plan.push({ id: e.id, wann, titel: e.titel, text: e.text(n) });
+  });
+
+  plan.push({ id: ERINNERUNG.wach.id, wann: naechsteUhrzeit(nun, DATA.zeiten.aufwachen),
+              titel: ERINNERUNG.wach.titel, text: ERINNERUNG.wach.text(n) });
+
+  plan.push({ id: ERINNERUNG.vermisst.id, wann: new Date(nun.getTime() + 3 * 86400000),
+              titel: ERINNERUNG.vermisst.titel, text: ERINNERUNG.vermisst.text(n) });
+
+  return plan.sort((a, b) => a.wann - b.wann);
+}
+
+function meldedienst(){
+  const C = typeof window !== 'undefined' ? window.Capacitor : null;
+  return (C && C.Plugins && C.Plugins.LocalNotifications) || null;
+}
+
+/* Vor jedem Stellen wird abgeräumt: sonst stapeln sich Meldungen aus
+   Werten, die längst wieder oben sind. */
+async function erinnerungenStellen(){
+  const LN = meldedienst();
+  if (!LN) return 'kein Dienst';
+  const ids = Object.values(ERINNERUNG).map(e => ({ id: e.id }));
+  try { await LN.cancel({ notifications: ids }); } catch (e){ /* nichts gestellt */ }
+  const plan = erinnerungsPlan();
+  if (!plan.length) return 'nichts zu stellen';
+  try {
+    await LN.schedule({ notifications: plan.map(p => ({
+      id: p.id, title: p.titel, body: p.text, schedule: { at: p.wann },
+      smallIcon: 'ic_stat_icon_config_sample',
+    })) });
+    return plan.length + ' gestellt';
+  } catch (e){ return 'abgelehnt'; }
+}
+
+async function erinnerungenSchalten(an){
+  const LN = meldedienst();
+  if (an && LN){
+    try {
+      const erlaubt = await LN.requestPermissions();
+      if (erlaubt && erlaubt.display && erlaubt.display !== 'granted') an = false;
+    } catch (e){ an = false; }
+  }
+  DATA.erinnerungen = !!an;
+  await persist();
+  await erinnerungenStellen();
+  return DATA.erinnerungen;
 }
 
 /* ---------- DOM ---------- */
@@ -724,6 +835,22 @@ function fensterEinstellungen(){
 
     blatt.appendChild(h('div', { class:'leer',
       text:'Voreingestellt ist 02:30 bis 10:30 — ' + DATA.bella.name + ' ist eine Nachteule.' }));
+
+    blatt.appendChild(h('div', { class:'block' },
+      h('div', { class:'blockkopf', text:'ERINNERUNGEN' }),
+      h('button', {
+        class:'taste' + (DATA.erinnerungen ? ' haupt' : ''), id:'erinnerungbtn',
+        text: DATA.erinnerungen ? 'AN' : 'AUS',
+        onclick: async () => {
+          const an = await erinnerungenSchalten(!DATA.erinnerungen);
+          fensterEinstellungen();
+          if (!an && !meldedienst()) sagen('Erinnerungen gibt es nur in der Handy-App.');
+        },
+      }),
+      h('div', { class:'leer', text: DATA.erinnerungen
+        ? 'Höchstens vier Meldungen: Hunger, Badezeit, Aufwachen und wenn drei Tage niemand da war. '
+          + 'Nie in ' + DATA.bella.name + 's Nacht.'
+        : 'Aus. ' + DATA.bella.name + ' meldet sich nicht von selbst.' })));
   });
 }
 
@@ -901,6 +1028,19 @@ async function start(){
   else sagen('Hallo!', 3500);
 
   render();
+
+  erinnerungenStellen();
+
+  /* Beim Weglegen neu planen: dann stimmen die Werte, aus denen sich die
+     Zeitpunkte ergeben, und danach rechnet niemand mehr nach. */
+  const App = typeof window !== 'undefined' && window.Capacitor
+           && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+  if (App && App.addListener){
+    App.addListener('pause', () => {
+      DATA.letzterBesuch = new Date().toISOString();
+      persist().then(erinnerungenStellen);
+    });
+  }
 
   // Ein Takt je Sekunde: Zappeln, Sprechblase, und jede Minute die Werte.
   let takt = 0;

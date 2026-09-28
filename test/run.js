@@ -15,7 +15,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   const T = bruecke(['DATA','state','adoptVault','pruefeRaster','standFortschreiben',
                      'istSchlafzeit','schlafMinuten','rezeptFuer','REZEPTE','ZUTATEN',
                      'gesamtwohl','stimmung','postPruefen','alleGaben','render',
-                     'NACHHOLGRENZE','BODEN_WERT','tageszeit','massstab','KLEIDER']);
+                     'NACHHOLGRENZE','BODEN_WERT','tageszeit','massstab','KLEIDER',
+                     'erinnerungsPlan','ERINNERUNG','faelligAb','erinnerungenSchalten',
+                     'FRUEHESTENS_MIN']);
 
   const tab = r => $$('#nav .tab').find(t => t.dataset.raum === r);
   const taste = text => $$('#tasten .taste').find(t => t.textContent === text);
@@ -276,6 +278,103 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     if (!v.besitz.kleider.includes('lavendel')) throw new Error('Kleid fehlt im Besitz');
     if (!v.besitz.haare.includes('nacht')) throw new Error('Haare fehlen im Besitz');
     return 'nachgetragen';
+  });
+
+  /* --- Erinnerungen --- */
+
+  await p.check('Ohne Erlaubnis wird nichts geplant', () => {
+    T.DATA.erinnerungen = false;
+    if (T.erinnerungsPlan(new Date(2026, 0, 5, 14, 0)).length)
+      throw new Error('Plan trotz ausgeschalteter Erinnerungen');
+    return 'aus heißt aus';
+  });
+
+  await p.check('Der Plan hängt an den echten Werten', () => {
+    T.DATA.erinnerungen = true;
+    T.DATA.zeiten.einschlafen = '02:30';
+    T.DATA.zeiten.aufwachen = '10:30';
+    const jetzt = new Date(2026, 0, 5, 14, 0);
+    const b = T.DATA.bella;
+    b.satt = 90; b.sauber = 90;
+    const voll = T.erinnerungsPlan(jetzt);
+    b.satt = 40; b.sauber = 90;
+    const hungrig = T.erinnerungsPlan(jetzt);
+    const wann = art => { const e = hungrig.find(x => x.id === T.ERINNERUNG[art].id); return e && e.wann; };
+    const wannVoll = voll.find(x => x.id === T.ERINNERUNG.hunger.id);
+    if (!wann('hunger')) throw new Error('keine Hungermeldung');
+    if (!wannVoll) throw new Error('bei 90 gar keine Meldung');
+    if (!(wann('hunger') < wannVoll.wann)) throw new Error('bei 40 satt nicht früher als bei 90');
+    // Bei vollen Werten fiele der Hunger in ihre Nacht — die Meldung darf
+    // deshalb nicht wegfallen, sondern rutscht hinter das Aufwachen.
+    if (wannVoll.wann.getHours() !== 10 || wannVoll.wann.getMinutes() !== 50)
+      throw new Error('verschobene Meldung um ' + wannVoll.wann.getHours() + ':' + wannVoll.wann.getMinutes());
+    return 'satt 40 → ' + wann('hunger').getHours() + ' Uhr, satt 90 → hinter dem Aufwachen um 10:50';
+  });
+
+  await p.check('In Bellas Nacht klingelt nichts', () => {
+    const b = T.DATA.bella;
+    // Werte so, dass der Hunger mitten in die Nacht fiele.
+    b.satt = 28 + 3.2 * 6;        // in rund sechs Stunden unter der Schwelle
+    b.sauber = 100;
+    const plan = T.erinnerungsPlan(new Date(2026, 0, 5, 21, 0));  // + 6 h = 03:00
+    // Die Meldung fällt nicht weg — sie rutscht aus der Nacht heraus.
+    const hunger = plan.find(x => x.id === T.ERINNERUNG.hunger.id);
+    if (!hunger) throw new Error('Hungermeldung fiel ganz weg');
+    const innerhalb = plan.filter(x => T.istSchlafzeit(x.wann));
+    if (innerhalb.length)
+      throw new Error(innerhalb.length + ' Meldung(en) im Schlaffenster, erste um '
+                    + innerhalb[0].wann.getHours() + ':' + innerhalb[0].wann.getMinutes());
+    return 'keine der ' + plan.length + ' Meldungen liegt zwischen 02:30 und 10:30';
+  });
+
+  await p.check('Nichts kommt sofort und nichts doppelt', () => {
+    const b = T.DATA.bella;
+    b.satt = 29; b.sauber = 29;        // knapp über der Schwelle
+    const jetzt = new Date(2026, 0, 5, 14, 0);
+    const plan = T.erinnerungsPlan(jetzt);
+    const zuFrueh = plan.filter(x => x.wann - jetzt < T.FRUEHESTENS_MIN * 60000);
+    if (zuFrueh.length) throw new Error(zuFrueh.length + ' Meldung(en) in der nächsten Stunde');
+    const ids = plan.map(x => x.id);
+    if (new Set(ids).size !== ids.length) throw new Error('doppelte Kennung: ' + ids.join());
+    return plan.length + ' Meldungen, frühestens in ' + T.FRUEHESTENS_MIN + ' Minuten';
+  });
+
+  await p.check('Aufwachen und Vermissen stehen immer im Plan', () => {
+    const jetzt = new Date(2026, 0, 5, 14, 0);
+    const plan = T.erinnerungsPlan(jetzt);
+    const wach = plan.find(x => x.id === T.ERINNERUNG.wach.id);
+    const vermisst = plan.find(x => x.id === T.ERINNERUNG.vermisst.id);
+    if (!wach) throw new Error('keine Aufwach-Meldung');
+    if (wach.wann.getHours() !== 10 || wach.wann.getMinutes() !== 30)
+      throw new Error('Aufwachen um ' + wach.wann.getHours() + ':' + wach.wann.getMinutes());
+    if (!vermisst) throw new Error('keine Vermisst-Meldung');
+    const tage = Math.round((vermisst.wann - jetzt) / 86400000);
+    if (tage !== 3) throw new Error('Vermisst nach ' + tage + ' Tagen');
+    return 'Aufwachen 10:30, Vermissen nach 3 Tagen';
+  });
+
+  await p.check('Ohne Handy bleibt der Schalter aus', async () => {
+    T.DATA.erinnerungen = false;
+    const an = await T.erinnerungenSchalten(true);
+    // Im Browser gibt es keinen Meldedienst; der Schalter darf trotzdem
+    // umspringen, nur darf nichts brechen.
+    if (typeof an !== 'boolean') throw new Error('kein Ergebnis');
+    if (errors.length) throw new Error('Fehler beim Schalten: ' + errors[0]);
+    return 'kein Absturz ohne Capacitor';
+  });
+
+  await p.check('Der Schalter steht in den Einstellungen', async () => {
+    click($('#settingsbtn'));
+    await wait(30);
+    const knopf = $('#erinnerungbtn');
+    if (!knopf) throw new Error('kein Schalter');
+    const vorher = T.DATA.erinnerungen;
+    click(knopf);
+    await wait(40);
+    if (T.DATA.erinnerungen === vorher) throw new Error('Schalter ohne Wirkung');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    return vorher ? 'an → aus' : 'aus → an';
   });
 
   /* --- Optik, soweit ohne Browser prüfbar --- */

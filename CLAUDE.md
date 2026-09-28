@@ -45,6 +45,12 @@ Testdisziplin, Commit-Stil.
   fünfzehn; der Test zählt nach.
 - **Jede Handlung geht durch `pflegen()`.** Dort wird begrenzt, gesprochen
   und gespeichert.
+- **Erinnerungen sind zweigeteilt:** `erinnerungsPlan()` rechnet nur aus,
+  wann was fällig wäre — prüfbar ohne Handy. Erst `erinnerungenStellen()`
+  spricht mit Android. Fällt ein Zeitpunkt in Bellas Nacht, wird er
+  **verschoben, nicht verworfen**: sonst bekäme man bei vollen Werten nie
+  eine Meldung, weil der Zeitpunkt zwölf Stunden später regelmäßig im
+  Schlaffenster läge. Höchstens vier Meldungen, frühestens in 90 Minuten.
 
 ## Nachschlagen
 
