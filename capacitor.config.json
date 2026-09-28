@@ -1,0 +1,8 @@
+{
+  "appId": "com.commandlineparalysis.bellagotchi",
+  "appName": "Bellagotchi",
+  "webDir": "www",
+  "plugins": {
+    "SplashScreen": { "launchAutoHide": true, "backgroundColor": "#2A132F" }
+  }
+}

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="de" data-app="bellagotchi" data-modus="hell">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="format-detection" content="telephone=no">
+<title>Bellagotchi</title>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div id="shell">
+  <header>
+    <div class="titel">BELLAGOTCHI</div>
+    <div class="headright">
+      <button class="wohl" id="wohlbtn" aria-label="Wie es Bella geht">
+        <span class="herz" aria-hidden="true"></span><span class="zahl" id="wohlzahl">0</span>
+      </button>
+      <button class="iconbtn" id="postbtn" aria-label="Briefkasten">✉<span class="punkt" id="postpunkt" hidden></span></button>
+      <button class="iconbtn" id="settingsbtn" aria-label="Einstellungen">≡</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <div class="geraet">
+      <div class="marke">BELLA&nbsp;<span>v1</span></div>
+      <div class="schirmrahmen">
+        <canvas id="bild" width="256" height="192" aria-label="Bellas Zimmer"></canvas>
+        <div class="blase" id="blase" hidden></div>
+      </div>
+      <div class="tasten" id="tasten"></div>
+    </div>
+    <div id="extra"></div>
+  </main>
+
+  <nav id="nav"></nav>
+</div>
+
+<div id="modal" class="modal" hidden><div class="modalblatt" id="modalblatt"></div></div>
+
+<script src="js/storage.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

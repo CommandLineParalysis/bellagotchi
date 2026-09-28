@@ -1,0 +1,29 @@
+{
+  "name": "bellagotchi",
+  "version": "1.0.0",
+  "description": "Offline-Pflegespiel in Pixeloptik: kümmere dich um Bella",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync android",
+    "postsync": "bappiverse-permissions",
+    "permissions": "bappiverse-permissions",
+    "bundle": "bappiverse-bundle",
+    "sync:ui": "bappiverse-sync-ui",
+    "icons:check": "bappiverse-check-icons",
+    "assets": "capacitor-assets generate --android",
+    "setup:android": "cap add android && npm run permissions && npm run assets && cap sync android",
+    "open": "cap open android",
+    "test": "node test/run.js"
+  },
+  "devDependencies": {
+    "@bappiverse/scaffold": "github:CommandLineParalysis/bappiverse",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.3"
+  }
+}

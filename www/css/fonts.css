@@ -1,0 +1,14 @@
+/* Lokal gebündelte Pixelschriften — kein Abruf von außen, die App
+   braucht keinerlei Netz. Beide stehen unter der SIL Open Font License.
+
+     Press Start 2P  der Titel auf dem Gehäuse, klobig wie auf einem Automaten
+     Silkscreen      alles andere: Knöpfe, Werte, Bellas Sprache          */
+
+@font-face{font-family:'Press Start 2P';font-style:normal;font-weight:400;font-display:block;
+  src:url('fonts/press-start-2p-latin-400-normal.woff2') format('woff2')}
+
+@font-face{font-family:'Silkscreen';font-style:normal;font-weight:400;font-display:block;
+  src:url('fonts/silkscreen-latin-400-normal.woff2') format('woff2')}
+
+@font-face{font-family:'Silkscreen';font-style:normal;font-weight:700;font-display:block;
+  src:url('fonts/silkscreen-latin-700-normal.woff2') format('woff2')}
