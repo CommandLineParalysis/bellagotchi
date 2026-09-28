@@ -1371,12 +1371,13 @@ function maleBadeszene(ctx, s){
   const wmx = wasser.x + wasser.b / 2, wmy = wasser.unten - wasser.h / 2;
   const wrx = wasser.b / 2, wry = wasser.h / 2;
 
-  /* Blasen: gemalt, wenn eine Datei da ist; sonst ein Ring in der
-     Zusatzfarbe, innen heller, mit Glanzpunkt. Kleine Tupfer allein
-     sähen aus wie Schmutz. */
+  /* Blasen. Eine gemalte Wanne bringt sie selbst mit — dort wird nichts
+     darübergestreut. Wer trotzdem bewegte Blasen will, legt eine Datei
+     `blase_<zusatz>` dazu; dann kommen sie wieder, aber als sein Bild. */
   const blasenPlatz = 'blase_' + DATA.bad.zusatz;
+  const blasenZeichnen = !gemalteWanne || bildDa(blasenPlatz);
   const zufall = streuFolge('blasen' + DATA.bad.zusatz);
-  for (let i = 0; i < 14; i++){
+  for (let i = 0; blasenZeichnen && i < 14; i++){
     const winkel = zufall() * Math.PI * 2, r = Math.sqrt(zufall());
     const bx = wmx + Math.round(Math.cos(winkel) * wrx * r * 0.88);
     const by = wmy + Math.round(Math.sin(winkel) * wry * r * 0.88);
@@ -1910,15 +1911,29 @@ function aufhellen(farbe){
   return 'rgb(' + hell(n >> 16) + ',' + hell((n >> 8) & 255) + ',' + hell(n & 255) + ')';
 }
 
-function maleIcon(name){
-  const c = h('canvas', { width: 44, height: 44, 'aria-hidden': 'true' });
-  if (c.getContext){
-    const ctx = c.getContext('2d');
-    if (ctx){
-      if ('imageSmoothingEnabled' in ctx) ctx.imageSmoothingEnabled = false;
-      maleSprite(ctx, ICONS[name], 0, 0, 2.75, null);
-    }
+/* Die Kantenlänge der Icon-Leinwand. 64 statt 44, damit ein gemaltes
+   Icon von 30 Punkten glatt verdoppelt hineinpasst und mein gezeichnetes
+   von 16 glatt vervierfacht — bei 44 ginge beides nicht auf. */
+const ICON_PUNKTE = 64;
+
+function maleIcon(name, platz){
+  const c = h('canvas', { width: ICON_PUNKTE, height: ICON_PUNKTE, 'aria-hidden': 'true' });
+  if (!c.getContext) return c;
+  const ctx = c.getContext('2d');
+  if (!ctx) return c;
+  if ('imageSmoothingEnabled' in ctx) ctx.imageSmoothingEnabled = false;
+
+  /* Ein geliefertes Icon wird mittig gesetzt und nur um ganze Vielfache
+     vergrößert — sonst verlöre es beim Skalieren die harten Kanten. */
+  const b = platz && BILDER[platz];
+  if (b && ctx.drawImage){
+    const passt = Math.min(ICON_PUNKTE / b.b, ICON_PUNKTE / b.h);
+    const f = passt >= 1 ? Math.floor(passt) : passt;
+    const bb = Math.round(b.b * f), hh = Math.round(b.h * f);
+    ctx.drawImage(b.el, Math.round((ICON_PUNKTE - bb) / 2), Math.round((ICON_PUNKTE - hh) / 2), bb, hh);
+    return c;
   }
+  if (ICONS[name]) maleSprite(ctx, ICONS[name], 0, 0, ICON_PUNKTE / 16, null);
   return c;
 }
 
@@ -3059,7 +3074,7 @@ function navBauen(){
         if (state.raum === 'bad' && r !== 'bad'){ state.schaum = false; state.plansch = null; }
         state.raum = r; state.blase = null; render();
       },
-    }, maleIcon(icons[r]), h('span', { text: kurz[r] })));
+    }, maleIcon(icons[r], 'icon_' + r), h('span', { text: kurz[r] })));
   });
 }
 
@@ -3086,6 +3101,8 @@ function bildplaetzeAnmelden(){
   // Das Bett in der Nische: eigener Platz, weil es nicht das
   // Zimmermöbel `bett` ist, sondern die Nahansicht.
   bildplatzAnlegen('bett_nische');
+  // Die fünf Zimmer-Icons in der Fußzeile.
+  RAEUME.forEach(r => bildplatzAnlegen('icon_' + r));
   /* Je Badezusatz eine gemalte Wanne — das Wasser ist darin schon
      gemalt. Dazu je Zusatz eine Blase, falls die auch von Hand kommen
      soll; fehlt sie, wird weiter die gezeichnete genommen. */

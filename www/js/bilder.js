@@ -42,6 +42,7 @@ const BILDPLAETZE = {
 
   // Erste gelieferte Grafik: die Pflanze in der Küche.
   deko_pflanze:   'bilder/deko_pflanze.png',
+  icon_schlaf:    'bilder/icon_schlaf.png',
 };
 
 /* Gerichte und Zutaten bekommen ihre Plätze aus den Listen im Spiel,

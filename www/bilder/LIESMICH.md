@@ -118,13 +118,16 @@ wird nichts umgefärbt; gewechselt wird die Datei.
 | Plätze | Empfohlene Größe |
 |---|---|
 | `wanne_klar`, `wanne_rosen`, `wanne_minze`, `wanne_lavendel`, `wanne_zitrone`, `wanne_galaxie` | **1064 × 728 px** (190 × 130 cm) |
-| `blase_klar` … `blase_galaxie` (freiwillig) | 30–60 px, quadratisch |
+| `blase_klar` … `blase_galaxie` (nur falls gewollt) | 30–60 px, quadratisch |
 
 Die Form ist dir überlassen — eckig, oval, mit Füßen. Sie muss nicht in
 mein Oval passen.
 
-Liegt keine `blase_…`-Datei da, bleiben meine gezeichneten Blasen; sie
-nehmen die Farbe des Badezusatzes.
+**Die Blasen malst du mit in die Wanne.** Sobald eine `wanne_…`-Datei
+da ist, zeichnet die App keine Blasen mehr darüber — deine sind ja schon
+drin. Nur wer bewegte Blasen will, legt zusätzlich `blase_<zusatz>` dazu;
+dann kommen sie wieder, aber als sein eigenes Bild. Ohne gemalte Wanne
+bleiben meine gezeichneten, in der Farbe des Badezusatzes.
 
 ### Die Wasserfläche einstellen
 
@@ -162,6 +165,19 @@ die Hängepflanze — die Nische ist klein.
 
 Jedes Stück lässt sich einzeln verschieben, ebenso Kissen, Kuscheltiere
 und Badespielzeug.
+
+## Zimmer-Icons in der Fußzeile
+
+| Platz | |
+|---|---|
+| `icon_schlaf`, `icon_kueche`, `icon_wohnen`, `icon_bad`, `icon_schrank` | **32 × 32 px** |
+
+Quadratisch, mit durchsichtigem Hintergrund. 32 passt genau (wird
+verdoppelt); 30 oder 16 gehen auch. Was größer als 64 px ist, wird
+verkleinert — dann leidet die Kante.
+
+Liegt für ein Zimmer keine Datei, bleibt mein gezeichnetes Icon stehen.
+Du kannst also einzeln austauschen.
 
 ## Zutaten, Snacks und Gerichte
 
