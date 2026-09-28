@@ -458,6 +458,97 @@ MOEBELBILD.lampe = (ctx, s, x, y, b, h) => {
   mFlaeche(ctx, s, x + b * 0.2, y + h - 1.5, b * 0.6, 1.5, m.kante);
 };
 
+/* ---------- Wanddeko ----------
+   Hängt an der Wand, steht nicht auf dem Boden. Gezeichnet wird von der
+   oberen Kante der zugewiesenen Fläche aus. */
+
+MOEBELBILD.wd_lichterkette = (ctx, s, x, y, b, h) => {
+  const n = 13;
+  for (let i = 0; i <= n; i++){
+    const t = i / n;
+    const lx = x + t * b, ly = y + Math.sin(t * Math.PI) * h * 0.55;
+    if (i < n){
+      const t2 = (i + 1) / n;
+      mSchraeg(ctx, s, lx, ly, x + t2 * b, y + Math.sin(t2 * Math.PI) * h * 0.55, 0.8, '#5C4750');
+    }
+    mKreis(ctx, s, lx, ly + 2.5, 3.2, 'rgba(255,201,138,.30)');
+    mKreis(ctx, s, lx, ly + 2.5, 1.7, i % 3 ? '#FFC98A' : '#FFF0D0');
+  }
+};
+
+MOEBELBILD.wd_girlande = (ctx, s, x, y, b, h) => {
+  const farben = ['#FF8AA8','#FFD166','#4BE38A','#4FA8FF','#C9A6FF'];
+  const n = 9, wimpel = h * 0.55;
+  for (let i = 0; i <= n; i++){
+    const t = i / n;
+    const lx = x + t * b, ly = y + Math.sin(t * Math.PI) * h * 0.4;
+    if (i < n){
+      const t2 = (i + 1) / n;
+      mSchraeg(ctx, s, lx, ly, x + t2 * b, y + Math.sin(t2 * Math.PI) * h * 0.4, 0.8, '#8A5B2E');
+    }
+    // Wimpel: ein Dreieck, zeilenweise eingezogen — das gibt die Treppe.
+    const f = farben[i % farben.length];
+    const w = 9;
+    for (let k = 0; k < Math.round(wimpel); k++){
+      const ein = (w / 2) * (k / wimpel);
+      mFlaeche(ctx, s, lx - w / 2 + ein, ly + 1 + k, w - 2 * ein, 1.2, f);
+    }
+  }
+};
+
+MOEBELBILD.wd_bild = (ctx, s, x, y, b, h) => {
+  const w = STOFFE.holz;
+  mKasten(ctx, s, x, y, b, h, w, 1.2);
+  mFlaeche(ctx, s, x + 4, y + 4, b - 8, h - 8, '#F4EFE4');
+  mKreis(ctx, s, x + b * 0.68, y + h * 0.3, Math.min(b, h) * 0.12, '#FFD166');
+  const boden = y + h - 5;
+  const huegel = Math.round((h - 10) * 0.45);
+  for (let k = 0; k < huegel; k++){
+    const br = (b - 9) * (0.45 + 0.55 * k / huegel);
+    mFlaeche(ctx, s, x + b / 2 - br / 2, boden - k, br, 1.1, k % 3 ? '#9CF5B8' : '#4BE38A');
+  }
+};
+
+MOEBELBILD.wd_bild_gross = (ctx, s, x, y, b, h) => MOEBELBILD.wd_bild(ctx, s, x, y, b, h);
+
+MOEBELBILD.wd_traumfaenger = (ctx, s, x, y, b, h) => {
+  const mx = x + b / 2, r = b / 2 - 1, my = y + r + 1;
+  mRing(ctx, s, mx, my, r, 1.4, '#C98B5A');
+  for (let i = 0; i < 8; i++){
+    const a1 = (i / 8) * Math.PI * 2, a2 = ((i + 3) / 8) * Math.PI * 2;
+    mSchraeg(ctx, s, mx + Math.cos(a1) * r * 0.9, my + Math.sin(a1) * r * 0.9,
+                     mx + Math.cos(a2) * r * 0.9, my + Math.sin(a2) * r * 0.9, 0.6, '#EFE0C8');
+  }
+  mKreis(ctx, s, mx, my, 2.2, '#FFD166');
+  [-1, 0, 1].forEach(seite => {
+    const fx = mx + seite * (b * 0.26);
+    const laenge = Math.max(6, h - 2 * r - 4 - Math.abs(seite) * 6);
+    mFlaeche(ctx, s, fx - 0.4, y + 2 * r + 2, 0.8, laenge, '#C98B5A');
+    for (let k = 0; k < Math.round(laenge * 0.6); k++)
+      mFlaeche(ctx, s, fx - 2.2 + (k % 2), y + 2 * r + 2 + laenge * 0.4 + k, 4.4, 1,
+               k % 2 ? '#FFF8FF' : '#E2D2FF');
+  });
+};
+
+MOEBELBILD.wd_wandregal = (ctx, s, x, y, b, h) => {
+  const w = STOFFE.holz;
+  // Das Brett sitzt unten, darauf steht der Kleinkram.
+  const brett = y + h - 3;
+  mFlaeche(ctx, s, x, brett, b, 3, w.flaeche);
+  mFlaeche(ctx, s, x, brett, b, 1, w.licht);
+  mFlaeche(ctx, s, x, brett + 2, b, 1, w.kante);
+  [x + 5, x + b - 8].forEach(hx => mFlaeche(ctx, s, hx, brett + 3, 3, 4, w.schatten));
+  const farben = ['#FF8AA8','#4FA8FF','#4BE38A','#FFD166','#A65CFF'];
+  let bx = x + 4;
+  for (let i = 0; bx < x + b - 8 && i < 9; i++){
+    const bb = 3 + (i % 3);
+    const bh = (h - 5) * (0.5 + ((i * 7) % 5) / 12);
+    mFlaeche(ctx, s, bx, brett - bh, bb, bh, farben[i % farben.length]);
+    mFlaeche(ctx, s, bx, brett - bh, 1, bh, '#FFFFFF');
+    bx += bb + 1.5;
+  }
+};
+
 /* Gibt es eine Zeichnung für diesen Namen? */
 function moebelDa(name){ return !!MOEBELBILD[name]; }
 

@@ -32,6 +32,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'planschStarten','planschAnteil','PLANSCH_DAUER','lichtAn',
                      'erholungJetzt','ERHOLUNG','ERHOLUNG_HELL',
                      'vaultPayload','persist','listenBild','WANDFARBEN','BODENFARBEN','maleFlaeche',
+                     'allesFreischalten','WANDDEKO','WANDDEKO_MAX','ZONEN','zone','zoneDa','BADEZUSAETZE',
+                     'zonenVorgabe','zoneSetzen','platzSetzen','szenenMasse','MOEBEL',
+                     'BREITEN_CM','dingeImRaum','wanneMasse','nischeMasse',
                      'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
@@ -464,6 +467,125 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   /* --- Bildplätze für Vorrat und Snacks --- */
 
+  /* --- Wanddeko und Zonen --- */
+
+  await p.check('Wanddeko kommt mit der Post und hängt im Schlafzimmer', async () => {
+    T.DATA.besitz.wanddeko = [];
+    const offen = T.alleGaben().filter(g => g.art === 'wanddeko');
+    if (offen.length !== Object.keys(T.WANDDEKO).length)
+      throw new Error('nicht alle Wanddeko in der Post: ' + offen.length);
+    T.DATA.besitz.wanddeko = Object.keys(T.WANDDEKO);
+    T.DATA.raeume.schlaf.wanddeko = [];
+    await mitBella('schlaf');
+    click($('#einrichtenbtn'));
+    await wait(30);
+    const kacheln = $$('#modalblatt .stueck').filter(k => k.dataset.wahl in T.WANDDEKO);
+    if (kacheln.length !== Object.keys(T.WANDDEKO).length)
+      throw new Error('im Einrichten fehlen Stücke: ' + kacheln.length);
+    click(kacheln[0]); await wait(30);
+    if (!T.DATA.raeume.schlaf.wanddeko.length) throw new Error('nichts aufgehängt');
+    // Höchstens vier, das Älteste weicht.
+    Object.keys(T.WANDDEKO).forEach(id => {
+      if (!T.DATA.raeume.schlaf.wanddeko.includes(id))
+        T.DATA.raeume.schlaf.wanddeko.push(id);
+    });
+    T.DATA.raeume.schlaf.wanddeko = T.adoptVault(T.vaultPayload()).raeume.schlaf.wanddeko;
+    if (T.DATA.raeume.schlaf.wanddeko.length > T.WANDDEKO_MAX)
+      throw new Error('mehr als ' + T.WANDDEKO_MAX + ' an der Wand: ' + T.DATA.raeume.schlaf.wanddeko.length);
+    click($('#modalblatt .schliessen')); await wait(20);
+    return Object.keys(T.WANDDEKO).length + ' Stücke, höchstens ' + T.WANDDEKO_MAX + ' gleichzeitig';
+  });
+
+  await p.check('Wanddeko-Vorgaben decken einander nicht', () => {
+    const s = T.szenenMasse(T.buehneMasse(), T.SZENE_CM.nische);
+    /* Alle Auswahlen prüfen, nicht nur die erste: vorher fiel genau die
+       Kombination durch, die ich zufällig nicht geprüft hatte. */
+    const alle = Object.keys(T.WANDDEKO);
+    const WANDDEKO_MAX = T.WANDDEKO_MAX;
+    const kombis = [];
+    const bauen = (ab, jetzt) => {
+      if (jetzt.length === WANDDEKO_MAX){ kombis.push(jetzt.slice()); return; }
+      for (let i = ab; i < alle.length; i++) bauen(i + 1, jetzt.concat(alle[i]));
+    };
+    bauen(0, []);
+    kombis.forEach(k => {
+      T.DATA.raeume.schlaf.wanddeko = k;
+      pruefeKombi(s, k);
+    });
+    T.DATA.raeume.schlaf.wanddeko = [];
+    return kombis.length + ' Auswahlen geprüft, keine Überdeckung';
+  });
+
+  function pruefeKombi(s, auswahl){
+    const kaesten = auswahl.map(id => {
+      const p2 = T.platzVon('schlaf', id, s);
+      return { id, x: p2.x, y: p2.unten - (T.GROESSEN_CM[id] || 30),
+               b: T.BREITEN_CM[id] || 40, h: T.GROESSEN_CM[id] || 30 };
+    });
+    for (let i = 0; i < kaesten.length; i++)
+      for (let j = i + 1; j < kaesten.length; j++){
+        const a = kaesten[i], b2 = kaesten[j];
+        /* Ganz frei ist das Ziel. In einer vollen Nische geht das nicht
+           immer auf — dann muss die Überdeckung klein bleiben, sonst
+           liegt ein Bild auf einem anderen statt daneben. */
+        const ueber = Math.max(0, Math.min(a.x + a.b, b2.x + b2.b) - Math.max(a.x, b2.x))
+                    * Math.max(0, Math.min(a.y + a.h, b2.y + b2.h) - Math.max(a.y, b2.y));
+        const kleiner = Math.min(a.b * a.h, b2.b * b2.h);
+        if (ueber > kleiner * 0.12)
+          throw new Error(auswahl.join('+') + ': ' + a.id + ' liegt zu ' +
+            Math.round(ueber / kleiner * 100) + ' % über ' + b2.id);
+      }
+    // Und alles bleibt in der Nische.
+    const n = T.nischeMasse(s);
+    kaesten.forEach(k => {
+      if (k.x < n.links || k.x + k.b > n.rechts)
+        throw new Error(auswahl.join('+') + ': ' + k.id + ' hängt neben der Nische');
+    });
+  }
+
+  await p.check('Liegefläche und Wasserfläche lassen sich verschieben und ändern', async () => {
+    const sN = T.szenenMasse(T.buehneMasse(), T.SZENE_CM.nische);
+    const sW = T.szenenMasse(T.buehneMasse(), T.SZENE_CM.wanne);
+    const faelle = [['schlaf', 'zone_liege', sN], ['bad', 'zone_wasser', sW]];
+    const zeilen = [];
+    for (const [raum, name, s] of faelle){
+      if (!T.zoneDa(name)) throw new Error(name + ' ist keine Zone');
+      const vor = T.zone(raum, name, T.zonenVorgabe(raum, name, s));
+      await T.platzSetzen(raum, name, vor.x + 25, vor.unten - 12);
+      await T.zoneSetzen(name, vor.b - 30, vor.h + 14);
+      const nach = T.zone(raum, name, T.zonenVorgabe(raum, name, s));
+      if (Math.abs(nach.x - (vor.x + 25)) > 0.6) throw new Error(name + ': x nicht gesetzt');
+      if (Math.abs(nach.b - (vor.b - 30)) > 1) throw new Error(name + ': Breite nicht gesetzt');
+      if (Math.abs(nach.h - (vor.h + 14)) > 1) throw new Error(name + ': Höhe nicht gesetzt');
+      // Überlebt das Speichern?
+      const geladen = T.adoptVault(T.vaultPayload());
+      if (!geladen.zonen[name] || geladen.zonen[name].b !== nach.b)
+        throw new Error(name + ': Größe überlebt das Laden nicht');
+      if (!geladen.plaetze[raum] || !geladen.plaetze[raum][name])
+        throw new Error(name + ': Stelle überlebt das Laden nicht');
+      zeilen.push(name + ' ' + nach.b.toFixed(0) + '×' + nach.h.toFixed(0));
+      delete T.DATA.plaetze[raum][name];
+      delete T.DATA.zonen[name];
+    }
+    return zeilen.join(' · ');
+  });
+
+  await p.check('Für jede gemalte Wanne und jedes gemalte Bett gibt es einen Platz', () => {
+    const fehlt = [];
+    Object.keys(T.BADEZUSAETZE).forEach(z => {
+      if (!('wanne_' + z in T.BILDPLAETZE)) fehlt.push('wanne_' + z);
+      if (!('blase_' + z in T.BILDPLAETZE)) fehlt.push('blase_' + z);
+    });
+    if (!('bett_nische' in T.BILDPLAETZE)) fehlt.push('bett_nische');
+    /* Die Möbel hießen einmal `moebel_herd`, gezeichnet wird aber unter
+       `herd` — eine hochgeladene Datei wäre nie angekommen. */
+    Object.keys(T.MOEBEL).forEach(m => { if (!(m in T.BILDPLAETZE)) fehlt.push(m); });
+    Object.keys(T.WANDDEKO).forEach(w => { if (!(w in T.BILDPLAETZE)) fehlt.push(w); });
+    if (fehlt.length) throw new Error('kein Platz für: ' + fehlt.join(', '));
+    return Object.keys(T.BADEZUSAETZE).length + ' Wannen, ' + Object.keys(T.MOEBEL).length
+         + ' Möbel, ' + Object.keys(T.WANDDEKO).length + ' Wanddeko';
+  });
+
   /* --- Gemalte Wände und Böden --- */
 
   await p.check('Jede Tapete und jeder Boden hat einen eigenen Bildplatz', () => {
@@ -856,7 +978,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     const text = $('#platzausgabe').textContent;
     if (!/deko_pflanze/.test(text)) throw new Error('die Pflanze fehlt in der Ausgabe');
     const gelesen = JSON.parse(text);
-    if (!gelesen.kueche || !gelesen.kueche.deko_pflanze) throw new Error('nicht lesbar');
+    // Die Ausgabe trägt jetzt Stellen und Zonengrößen nebeneinander.
+    if (!gelesen.plaetze || !gelesen.plaetze.kueche || !gelesen.plaetze.kueche.deko_pflanze)
+      throw new Error('nicht lesbar');
+    if (!('zonen' in gelesen)) throw new Error('die Zonen fehlen in der Ausgabe');
     click($('#platzzurueck'));
     await wait(30);
     if (T.DATA.plaetze.kueche.deko_pflanze) throw new Error('nicht zurückgesetzt');
@@ -1024,17 +1149,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.post.length = 0;
     const b = T.DATA.bella;
     b.satt = 90; b.sauber = 90; b.ausgeruht = 90; b.laune = 90;
-    // Alles freigeschaltet: dann kann die Post nur noch Snacks bringen.
-    T.DATA.besitz.kleider = Object.keys(T.KLEIDER);
-    T.DATA.besitz.stuecke = Object.keys(T.KLEIDUNG);
-    T.DATA.besitz.frisuren = Object.keys(T.FRISUREN);
-    T.DATA.besitz.waende = Object.keys(T.WANDFARBEN);
-    T.DATA.besitz.boeden = Object.keys(T.BODENFARBEN);
-    T.DATA.besitz.bett = Object.keys(T.BETTZEUG);
-    T.DATA.besitz.bad = Object.keys(T.BADSPIELZEUG);
-    T.DATA.besitz.zusaetze = Object.keys(T.BADEZUSAETZE);
-    T.DATA.besitz.schuhe = Object.keys(T.SCHUHE);
-    T.DATA.besitz.accessoires = Object.keys(T.ACCESSOIRES);
+    /* Alles freigeschaltet: dann kann die Post nur noch Snacks bringen.
+       Über die App statt Liste für Liste — sonst fällt hier jede neue
+       Geschenkart durch, und zwar als Testfehler statt als Hinweis. */
+    T.allesFreischalten();
     if (T.alleGaben().length) throw new Error('Testaufbau: noch offen — ' +
       T.alleGaben().map(g => g.art).join(','));
     T.postPruefen(48 * 60);
@@ -1054,17 +1172,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     if ((T.DATA.snacks[gabe.was] || 0) <= vorher) throw new Error('nicht im Vorrat');
     click($('#modalblatt .schliessen'));
     await wait(20);
-    // Für die folgenden Prüfungen wieder etwas zum Freischalten lassen.
-    T.DATA.besitz.kleider = ['rosenrot'];
-    T.DATA.besitz.stuecke = ['kleid'];
-    T.DATA.besitz.frisuren = ['lang'];
-    T.DATA.besitz.schuhe = ['sch_barfuss'];
-    T.DATA.besitz.accessoires = ['acc_keins'];
-    T.DATA.besitz.waende = ['flieder'];
-    T.DATA.besitz.boeden = ['eiche'];
-    T.DATA.besitz.bett = ['kissen_a'];
-    T.DATA.besitz.bad = [];
-    T.DATA.besitz.zusaetze = ['klar'];
+    /* Für die folgenden Prüfungen wieder etwas zum Freischalten lassen:
+       zurück auf den Anfangsbestand, wie ihn ein neues Spiel hat. */
+    T.DATA.besitz = T.adoptVault({}).besitz;
     return gabe.text;
   });
 
@@ -1087,11 +1197,15 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     // Sammelstück dabei ist.
     // Der Briefkasten fasst nur drei Sendungen; kommen lauter Snacke,
     // muss er zwischendurch geleert werden.
-    for (let i = 0; i < 20 && !T.DATA.post.some(g => /kleid|wand|stueck|frisur|boden/.test(g.art)); i++){
+    /* Ein Muster für beides. Vorher stand in der Schleife ein
+       ungebundenes `wand`, das auch auf `wanddeko` passte: sie hörte
+       auf, und das anschließende Suchen fand nichts. */
+    const sammelstueck = g => /^(kleid|wand|stueck|frisur|boden)$/.test(g.art);
+    for (let i = 0; i < 20 && !T.DATA.post.some(sammelstueck); i++){
       T.DATA.post.length = 0;
       T.postPruefen(48 * 60);
     }
-    const gabe = T.DATA.post.find(g => /^(kleid|wand|stueck|frisur|boden)$/.test(g.art));
+    const gabe = T.DATA.post.find(sammelstueck);
     if (!gabe) throw new Error('kein Sammelstück in der Post');
     const topf = { kleid:'kleider', stueck:'stuecke', frisur:'frisuren',
                    wand:'waende', boden:'boeden' }[gabe.art];

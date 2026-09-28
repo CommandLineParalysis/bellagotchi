@@ -110,6 +110,59 @@ In `vorlagen/` liegen leere Dateien in genau diesen Maßen, dazu je eine
 wo welches Möbelstück steht. Zum Draufschauen beim Malen, nicht zum
 Mitspeichern.
 
+## Badewanne — Wasser und Blasen
+
+Du malst **eine Wanne je Badezusatz, mit dem Wasser schon darin**. Es
+wird nichts umgefärbt; gewechselt wird die Datei.
+
+| Plätze | Empfohlene Größe |
+|---|---|
+| `wanne_klar`, `wanne_rosen`, `wanne_minze`, `wanne_lavendel`, `wanne_zitrone`, `wanne_galaxie` | **1064 × 728 px** (190 × 130 cm) |
+| `blase_klar` … `blase_galaxie` (freiwillig) | 30–60 px, quadratisch |
+
+Die Form ist dir überlassen — eckig, oval, mit Füßen. Sie muss nicht in
+mein Oval passen.
+
+Liegt keine `blase_…`-Datei da, bleiben meine gezeichneten Blasen; sie
+nehmen die Farbe des Badezusatzes.
+
+### Die Wasserfläche einstellen
+
+Weil deine Wanne anders geformt ist, kann die App nicht raten, wo das
+Wasser liegt. Daran hängen **Blasen, Dampf, Spielzeug, Bella und das
+Planschen**. Deshalb: Stift oben rechts → **Genau platzieren** →
+`zone_wasser`. Mit den Pfeilen verschieben, mit BREITER/SCHMALER/
+HÖHER/FLACHER an deine Wanne anpassen. Im Platzierungs-Modus ist die
+Fläche als gestrichelter Rahmen zu sehen.
+
+## Bett im Schlafzimmer
+
+| Platz | Empfohlene Größe |
+|---|---|
+| `bett_nische` | **1008 × 336 px** (180 × 60 cm) |
+
+Liegt die Datei, ersetzt sie Matratze und Kissenwand vollständig. Wo
+Bella darin liegt, sagt die Zone `zone_liege` — genauso einzustellen wie
+die Wasserfläche.
+
+## Wanddeko
+
+Hängt im Schlafzimmer an der Wand, höchstens drei Stück gleichzeitig,
+kommt mit der Post. Sobald etwas hängt, weichen das eingebaute Regal und
+die Hängepflanze — die Nische ist klein.
+
+| Platz | | Größe | Datei |
+|---|---|---|---|
+| `wd_lichterkette` | Lichterkette | 150 × 20 cm | **840 × 112 px** |
+| `wd_girlande` | Girlande | 130 × 28 cm | **728 × 157 px** |
+| `wd_bild` | Bild | 40 × 50 cm | **224 × 280 px** |
+| `wd_bild_gross` | Großes Bild | 60 × 75 cm | **336 × 420 px** |
+| `wd_traumfaenger` | Traumfänger | 32 × 70 cm | **179 × 392 px** |
+| `wd_wandregal` | Wandregal | 80 × 22 cm | **448 × 123 px** |
+
+Jedes Stück lässt sich einzeln verschieben, ebenso Kissen, Kuscheltiere
+und Badespielzeug.
+
 ## Zutaten, Snacks und Gerichte
 
 Die stehen nicht im Zimmer, sondern in den Listen (Vorrat, Kochen,

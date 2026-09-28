@@ -32,13 +32,14 @@ function leererVault(){
     /* Von Hand gesetzte Plätze, in Zentimetern: raum → name → {x, unten}.
        Was hier steht, gilt vor der Voreinstellung. */
     plaetze: {},
+    zonen: {},
     bestellung: null,
     outfit: { stueck: 'kleid', farbe: 'rosenrot', frisur: 'lang',
               schuhe: 'sch_ballerina', accessoire: 'acc_keins' },
     zeiten: { einschlafen: '02:30', aufwachen: '10:30' },
     raeume: {
       schlaf:  { wand:'flieder', wandmuster:'wand_punkte',   boden:'eiche', bodenmuster:'boden_diele',
-                 deko: ['kissen_a'], licht: true },
+                 deko: ['kissen_a'], wanddeko: [], licht: true },
       kueche:  { wand:'butter',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese' },
       wohnen:  { wand:'minze',   wandmuster:'wand_streifen', boden:'eiche', bodenmuster:'boden_diele' },
       bad:     { wand:'himmel',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese',
@@ -48,7 +49,7 @@ function leererVault(){
     besitz: { kleider: ['rosenrot', 'himmelblau'], haare: ['beere', 'honig'],
               waende: ['flieder','butter','minze','himmel','rosa'],
               boeden: ['eiche','perle','beere'],
-              bett: ['kissen_a'], bad: [], zusaetze: ['klar'],
+              bett: ['kissen_a'], bad: [], zusaetze: ['klar'], wanddeko: [],
               stuecke: ['kleid', 'schlafanzug'], frisuren: ['lang', 'kurz'],
               schuhe: ['sch_barfuss', 'sch_ballerina'], accessoires: ['acc_keins'] },
     vorrat: { erdbeere: 3, milch: 2, mehl: 2, honig: 1, beere: 2, ei: 2 },
@@ -85,7 +86,7 @@ const state = {
 
 function vaultPayload(){
   const v = {};
-  for (const k of ['bella','bad','plaetze','bestellung','bestelltHeute','outfit','zeiten','raeume',
+  for (const k of ['bella','bad','plaetze','zonen','bestellung','bestelltHeute','outfit','zeiten','raeume',
                    'besitz','vorrat','snacks','kochbuch','post','gesprochen','erinnerungen',
                    'stand','letzterBesuch','modus','backup']) v[k] = DATA[k];
   return v;
@@ -126,6 +127,17 @@ function adoptVault(saved){
         v.plaetze[raum][name] = { x: +o.x, unten: +o.unten };
     });
   });
+  /* Die Größen der Zonen. Die Stelle steht in `plaetze`, hier steht
+     nur, wie breit und hoch — das braucht nur, wer Bett oder Wanne
+     selbst gemalt hat. */
+  v.zonen = {};
+  Object.entries(saved.zonen || {}).forEach(([name, o]) => {
+    if (!zoneDa(name) || !o) return;
+    const masse = {};
+    if (Number.isFinite(o.b) && o.b > 4) masse.b = +o.b;
+    if (Number.isFinite(o.h) && o.h > 4) masse.h = +o.h;
+    if (Object.keys(masse).length) v.zonen[name] = masse;
+  });
   const roh = Array.isArray(saved.bestellung) ? saved.bestellung
             : (saved.bestellung ? [saved.bestellung] : []);
   const echt = roh.filter(b => b && typeof b.liefert === 'string'
@@ -154,6 +166,8 @@ function adoptVault(saved){
       bodenmuster: KACHELN[q.bodenmuster] ? q.bodenmuster : d.bodenmuster,
       deko: (Array.isArray(q.deko) ? q.deko : (d.deko || [])).filter(x => KLEINKRAM[x]).slice(0, 3),
       licht: typeof q.licht === 'boolean' ? q.licht : (d.licht !== false),
+      wanddeko: (Array.isArray(q.wanddeko) ? q.wanddeko : (d.wanddeko || []))
+                  .filter(x => WANDDEKO[x]).slice(0, WANDDEKO_MAX),
     };
   });
 
@@ -171,6 +185,7 @@ function adoptVault(saved){
     waende:  gefiltert(bs.waende,  WANDFARBEN, ['flieder','butter','minze','himmel','rosa']),
     boeden:  gefiltert(bs.boeden,  BODENFARBEN, ['eiche','perle','beere']),
     bett:    (Array.isArray(bs.bett) ? bs.bett : []).filter(x => BETTZEUG[x]),
+    wanddeko:(Array.isArray(bs.wanddeko) ? bs.wanddeko : []).filter(x => WANDDEKO[x]),
     bad:     (Array.isArray(bs.bad)  ? bs.bad  : []).filter(x => BADSPIELZEUG[x]),
     zusaetze: gefiltert(bs.zusaetze, BADEZUSAETZE, ['klar']),
   };
@@ -332,6 +347,31 @@ const BADSPIELZEUG = {
   sp_ente:   { name:'Ente' },
   sp_schiff: { name:'Schiffchen' },
   sp_stern:  { name:'Seestern' },
+};
+
+/* ---------- Wanddeko ----------
+   Hängt an der Wand über dem Bett, nicht auf dem Bett. Kommt wie alles
+   andere mit der Post. Anders als Kissen und Kuscheltiere steht hier
+   eine Höhe über dem Boden dabei: eine Lichterkette gehört oben hin,
+   ein Regal auf Greifhöhe. */
+/* `breit` hängt quer über die ganze Nische, alles andere in den freien
+   Streifen zwischen Fenster und Bett. Die Vorgabestelle wird aus der
+   Nische gerechnet statt in festen Zentimetern angegeben: die Nische ist
+   auf jedem Gerät verschieden groß, und feste Werte lägen mal über dem
+   Fenster und mal im Bett. Verschieben lässt sich danach alles. */
+/* Wie viele Stücke gleichzeitig an der Wand hängen dürfen. Drei, nicht
+   vier: die Nische ist klein, und bei vier großen Stücken gibt es keine
+   Anordnung mehr, in der sich nichts deckt. Verschieben kann man danach
+   trotzdem alles. */
+const WANDDEKO_MAX = 3;
+
+const WANDDEKO = {
+  wd_lichterkette: { name:'Lichterkette', breit: true },
+  wd_girlande:     { name:'Girlande',     breit: true },
+  wd_bild:         { name:'Bild' },
+  wd_bild_gross:   { name:'Großes Bild' },
+  wd_traumfaenger: { name:'Traumfänger' },
+  wd_wandregal:    { name:'Wandregal' },
 };
 
 const BETTZEUG = {
@@ -788,6 +828,23 @@ function rahmenUm(ctx, s, name, sprite, p, gewaehlt){
   px(ctx, s, p.x + b - d, p.unten - h, d, h, farbe);
 }
 
+/* Eine Zone hat keine Grafik, nur eine Fläche. Im Platzierungs-Modus
+   bekommt sie einen gestrichelten Rahmen, damit man sieht, was man
+   gerade verschiebt. */
+function zonenRahmen(ctx, s, z, gewaehlt){
+  const farbe = gewaehlt ? '#6AE0FF' : 'rgba(106,224,255,.35)';
+  const d = gewaehlt ? 1.2 : 0.6;
+  const oben = z.unten - z.h;
+  for (let x = z.x; x < z.x + z.b; x += 8){
+    px(ctx, s, x, oben, Math.min(4, z.x + z.b - x), d, farbe);
+    px(ctx, s, x, z.unten - d, Math.min(4, z.x + z.b - x), d, farbe);
+  }
+  for (let y = oben; y < z.unten; y += 8){
+    px(ctx, s, z.x, y, d, Math.min(4, z.unten - y), farbe);
+    px(ctx, s, z.x + z.b - d, y, d, Math.min(4, z.unten - y), farbe);
+  }
+}
+
 /* Wie viel vom Zimmer Fußboden ist, in Zentimetern — aber nie so viel,
    dass Bella oben aus dem Bild ragt. Auf einem Gerät mit wenig
    Punktdichte bleibt weniger Zimmer übrig, und dann weicht der Boden. */
@@ -1043,6 +1100,37 @@ function wanneMasse(s){
            links: mx - rx, rechts: mx + rx };
 }
 
+/* ---------- Zonen ----------
+   Zwei Stellen in den Nahansichten hängen nicht an einem Möbelstück,
+   sondern an einer Fläche: wo Bella im Bett liegt, und wo in der Wanne
+   Wasser ist. Malst du Bett oder Wanne selbst, stimmt meine gezeichnete
+   Stelle nicht mehr — deshalb lassen sich beide im Platzierungs-Modus
+   verschieben und in der Größe ändern, statt fest im Code zu stehen.
+
+   Ohne eigene Grafik entsprechen sie dem, was gezeichnet wird; wer
+   nichts hochlädt, merkt von den Zonen nichts. */
+const ZONEN = {
+  schlaf: { zone_liege:  { name: 'Liegefläche' } },
+  bad:    { zone_wasser: { name: 'Wasserfläche' } },
+};
+
+function zoneDa(name){
+  return Object.keys(ZONEN).some(r => ZONEN[r][name]);
+}
+
+/* Die Zone, wie sie gerade steht. `vorgabe` ist, was ohne eigene Werte
+   gälte — die Stelle aus der gezeichneten Fassung. */
+function zone(raum, name, vorgabe){
+  const eigen = eigenerPlatz(raum, name);
+  const eigenMass = (DATA.zonen || {})[name] || {};
+  return {
+    x:     eigen ? eigen.x : vorgabe.x,
+    unten: eigen ? eigen.unten : vorgabe.unten,
+    b:     eigenMass.b || vorgabe.b,
+    h:     eigenMass.h || vorgabe.h,
+  };
+}
+
 function maleKissenwand(ctx, s, mx, oberkante, rx, gross){
   const zufall = streuFolge('kissen');
   const toene = [['#D8A08A','#F0C4A8'], ['#C08070','#E0A48E'],
@@ -1129,14 +1217,22 @@ function maleSchlafnische(ctx, s){
   };
   lichterkette();
 
-  // Eine Hängepflanze, damit die Wand nicht leer bleibt.
-  const px0 = mx - Math.round(rx * 0.52), py0 = my - Math.round(ry * 0.10);
-  px(ctx, s, px0 - 4, py0, 9, 5, '#8A5B2E');
-  px(ctx, s, px0 - 5, py0 - 2, 11, 2, '#A9743E');
-  for (const [dx, dy, len] of [[-3, 5, 9], [0, 5, 13], [3, 5, 7], [-1, 5, 16]]){
-    for (let k = 0; k < len; k++)
-      px(ctx, s, px0 + dx + ((k % 4 < 2) ? 0 : 1), py0 + dy + k, 1, 1,
-         (k % 3) ? '#4BE38A' : '#2FB86A');
+  /* Regal und Hängepflanze sind fest eingebaute Wanddeko. Hängt eigene
+     an der Wand, weichen sie: die Nische ist klein, und beides
+     nebeneinander liegt übereinander. Wer nichts aufhängt, sieht die
+     Nische wie gehabt. */
+  const eigeneWanddeko = (DATA.raeume.schlaf.wanddeko || []).length > 0;
+
+  if (!eigeneWanddeko){
+    // Eine Hängepflanze, damit die Wand nicht leer bleibt.
+    const px0 = mx - Math.round(rx * 0.52), py0 = my - Math.round(ry * 0.10);
+    px(ctx, s, px0 - 4, py0, 9, 5, '#8A5B2E');
+    px(ctx, s, px0 - 5, py0 - 2, 11, 2, '#A9743E');
+    for (const [dx, dy, len] of [[-3, 5, 9], [0, 5, 13], [3, 5, 7], [-1, 5, 16]]){
+      for (let k = 0; k < len; k++)
+        px(ctx, s, px0 + dx + ((k % 4 < 2) ? 0 : 1), py0 + dy + k, 1, 1,
+           (k % 3) ? '#4BE38A' : '#2FB86A');
+    }
   }
 
   // Fenster links, Regal rechts — beide innerhalb der Nische.
@@ -1153,19 +1249,44 @@ function maleSchlafnische(ctx, s){
   };
   fenster();
 
-  const gb = Math.round(rx * 0.62), gh = Math.round(ry * 0.78);
-  const gx = mx + Math.round(rx * 0.16), gy = my - ry + Math.round(ry * 0.26);
-  maleRegal(ctx, s, gx, gy, Math.min(gb, mx + rx - gx - 3), gh);
+  if (!eigeneWanddeko){
+    const gb = Math.round(rx * 0.62), gh = Math.round(ry * 0.78);
+    const gx = mx + Math.round(rx * 0.16), gy = my - ry + Math.round(ry * 0.26);
+    maleRegal(ctx, s, gx, gy, Math.min(gb, mx + rx - gx - 3), gh);
+  }
+
+  /* Die Wanddeko hängt über dem Bett, innerhalb der Nische. Jedes Stück
+     an seiner eigenen Höhe über dem Boden; verschieben lässt sich alles
+     im Platzierungs-Modus. */
+  (DATA.raeume.schlaf.wanddeko || []).slice(0, WANDDEKO_MAX).forEach((id, i) => {
+    const w = WANDDEKO[id];
+    if (!w) return;
+    const p = platzVon('schlaf', id, s);
+    maleNachMass(ctx, s, id, null, p.x, p.unten, null);
+    if (state.platzieren) rahmenUm(ctx, s, id, null, p, state.platzieren.was === id);
+  });
 
   /* Das Bett füllt das untere Drittel der Nische. Vorher war es eine
      flache Scheibe am unteren Rand und Bella lag halb hinter der
-     Sprechblase. */
+     Sprechblase.
+
+     Liegt eine gemalte Bettdatei vor, tritt sie an die Stelle von
+     Kissenwand und Matratze — wo Bella dann liegt, sagt die Zone
+     `zone_liege`, die sich verschieben lässt. */
   const bettUnten = unten - 12, bettRx = rx - 6;
   const matratzeHoch = Math.max(12, Math.round(s.h * 0.085));
   const oberkante = bettUnten - matratzeHoch;
-  maleKissenwand(ctx, s, mx, oberkante + 2, bettRx, Math.max(7, matratzeHoch * 0.55));
-  maleMatratze(ctx, s, mx, bettUnten, bettRx, matratzeHoch);
-  if (DATA.bella.ort === 'schlaf') maleBellaImBett(ctx, s, mx, oberkante, bettRx - 16);
+  const gemaltesBett = maleBildNachMass(ctx, s, 'bett_nische', mx - bettRx, bettUnten);
+  if (!gemaltesBett){
+    maleKissenwand(ctx, s, mx, oberkante + 2, bettRx, Math.max(7, matratzeHoch * 0.55));
+    maleMatratze(ctx, s, mx, bettUnten, bettRx, matratzeHoch);
+  }
+  const liege = zone('schlaf', 'zone_liege',
+                     { x: mx - bettRx + 6, unten: oberkante, b: bettRx * 2 - 12, h: 46 });
+  if (DATA.bella.ort === 'schlaf')
+    maleBellaImBett(ctx, s, liege.x + liege.b / 2, liege.unten, liege.b / 2 - 16);
+  if (state.platzieren)
+    zonenRahmen(ctx, s, liege, state.platzieren.was === 'zone_liege');
 
   /* Was aus der Post auf dem Bett liegt: am rechten Bettende, nicht
      über Bella — sie liegt links mit dem Kopf am Kissen. */
@@ -1176,8 +1297,13 @@ function maleSchlafnische(ctx, s){
     if (!sp) return;
     const breit = breiteCm(id, sp);
     dx -= breit;
-    if (dx < mx + 18) return;              // näher an Bella wird nichts abgelegt
-    maleNachMass(ctx, s, id, sp, dx, oberkante + 4, null);
+    const eigen = eigenerPlatz('schlaf', id);
+    if (!eigen && dx < mx + 18) return;    // näher an Bella wird nichts abgelegt
+    const px0 = eigen ? eigen.x : dx;
+    const py0 = eigen ? eigen.unten : oberkante + 4;
+    maleNachMass(ctx, s, id, sp, px0, py0, null);
+    if (state.platzieren)
+      rahmenUm(ctx, s, id, sp, { x: px0, unten: py0 }, state.platzieren.was === id);
     dx -= 5;
   });
 
@@ -1223,20 +1349,42 @@ function maleBadeszene(ctx, s){
   const w = wanneMasse(s);
   const wy = w.wy, rx = w.rx, ry = w.ry, my = w.my;
 
-  ellipse(ctx, s, mx, my, rx, ry, '#C9C2CE');
-  ellipse(ctx, s, mx, my - 1, rx - 1, ry - 1, '#FFFFFF');
-  ellipse(ctx, s, mx, my + 1, rx - 7, ry - 6, z.wasser[2]);
-  ellipse(ctx, s, mx, my, rx - 8, ry - 7, z.wasser[1]);
-  ellipse(ctx, s, mx, my - 1, rx - 10, ry - 9, z.wasser[0]);
+  /* Je Badezusatz eine eigene gemalte Wanne — das Wasser ist darin schon
+     drin. Nichts wird umgefärbt; gewechselt wird die Datei. Liegt keine
+     vor, wird wie bisher gezeichnet und getönt. */
+  const gemalteWanne = maleBildNachMass(ctx, s, 'wanne_' + DATA.bad.zusatz,
+                                        mx - rx, my + ry);
+  if (!gemalteWanne){
+    ellipse(ctx, s, mx, my, rx, ry, '#C9C2CE');
+    ellipse(ctx, s, mx, my - 1, rx - 1, ry - 1, '#FFFFFF');
+    ellipse(ctx, s, mx, my + 1, rx - 7, ry - 6, z.wasser[2]);
+    ellipse(ctx, s, mx, my, rx - 8, ry - 7, z.wasser[1]);
+    ellipse(ctx, s, mx, my - 1, rx - 10, ry - 9, z.wasser[0]);
+  }
 
-  /* Blasen: ein Ring in der Zusatzfarbe, innen heller, ein Glanzpunkt
-     oben links. Kleine Tupfer allein sähen aus wie Schmutz. */
+  /* Wo Wasser ist, sagt die Zone. Bei der gezeichneten Wanne ist das die
+     Ellipse; bei einer gemalten steht die Form nicht fest, deshalb lässt
+     sich die Fläche im Platzierungs-Modus zurechtschieben. Daran hängen
+     Blasen, Dampf, Spielzeug, Bella und das Planschen. */
+  const wasser = zone('bad', 'zone_wasser',
+                      { x: mx - rx + 14, unten: my + ry - 12, b: (rx - 14) * 2, h: (ry - 12) * 2 });
+  const wmx = wasser.x + wasser.b / 2, wmy = wasser.unten - wasser.h / 2;
+  const wrx = wasser.b / 2, wry = wasser.h / 2;
+
+  /* Blasen: gemalt, wenn eine Datei da ist; sonst ein Ring in der
+     Zusatzfarbe, innen heller, mit Glanzpunkt. Kleine Tupfer allein
+     sähen aus wie Schmutz. */
+  const blasenPlatz = 'blase_' + DATA.bad.zusatz;
   const zufall = streuFolge('blasen' + DATA.bad.zusatz);
   for (let i = 0; i < 14; i++){
-    const w = zufall() * Math.PI * 2, r = Math.sqrt(zufall());
-    const bx = mx + Math.round(Math.cos(w) * (rx - 16) * r);
-    const by = my + Math.round(Math.sin(w) * (ry - 14) * r);
+    const winkel = zufall() * Math.PI * 2, r = Math.sqrt(zufall());
+    const bx = wmx + Math.round(Math.cos(winkel) * wrx * r * 0.88);
+    const by = wmy + Math.round(Math.sin(winkel) * wry * r * 0.88);
     const br = 3 + Math.round(zufall() * 4);
+    if (bildDa(blasenPlatz)){
+      maleBildNachMass(ctx, s, blasenPlatz, bx - br, by + br);
+      continue;
+    }
     ellipse(ctx, s, bx, by, br, br, z.blase);
     ellipse(ctx, s, bx, by, br - 1, br - 1, 'rgba(255,255,255,.55)');
     ellipse(ctx, s, bx, by, br - 2, br - 2, z.blaseHell);
@@ -1247,7 +1395,7 @@ function maleBadeszene(ctx, s){
   // Dampf über dem Wasser.
   const dampf = streuFolge('dampf');
   for (let i = 0; i < 3; i++){
-    let dx = mx - 16 + i * 16, dy = wy - 2;
+    let dx = wmx - 16 + i * 16, dy = wmy - wry - 2;
     for (let k = 0; k < 8; k++){
       px(ctx, s, dx, dy - k * 3, 1, 2, 'rgba(255,255,255,.55)');
       dx += dampf() > .5 ? 1 : -1;
@@ -1260,25 +1408,26 @@ function maleBadeszene(ctx, s){
   const inDerWanne = DATA.bella.ort === 'bad';
   const kopfHoch = GROESSEN_CM.bella * 0.247;
   const bellaB = breiteCm('bella', null);
-  const bx = mx - bellaB / 2, by = my - ry + 10;
+  const bx = wmx - bellaB / 2, by = wmy - wry + 10;
   if (inDerWanne) maleBellaStehend(ctx, s, bx, by, state.schaum ? 'froh' : stimmung(), true);
   if (state.schaum && inDerWanne){
     // Schaumhaube und Schaumkragen, damit man das Einschäumen sieht.
-    ellipse(ctx, s, mx, by - kopfHoch + 4, 16, 8, '#FFFFFF');
-    ellipse(ctx, s, mx - 11, by - kopfHoch + 7, 7, 5, '#FFFFFF');
-    ellipse(ctx, s, mx + 11, by - kopfHoch + 7, 7, 5, '#FFFFFF');
-    ellipse(ctx, s, mx, by + 2, 21, 6, '#F4F0F8');
+    ellipse(ctx, s, wmx, by - kopfHoch + 4, 16, 8, '#FFFFFF');
+    ellipse(ctx, s, wmx - 11, by - kopfHoch + 7, 7, 5, '#FFFFFF');
+    ellipse(ctx, s, wmx + 11, by - kopfHoch + 7, 7, 5, '#FFFFFF');
+    ellipse(ctx, s, wmx, by + 2, 21, 6, '#F4F0F8');
   }
 
-  if (state.dusche && inDerWanne) maleDusche(ctx, s, mx, by - kopfHoch);
-  if (state.plansch && inDerWanne) malePlanschen(ctx, s, w);
+  if (state.dusche && inDerWanne) maleDusche(ctx, s, wmx, by - kopfHoch);
+  if (state.plansch && inDerWanne)
+    malePlanschen(ctx, s, { mx: wmx, my: wmy, rx: wrx, ry: wry });
 
   /* Was auf dem Rand steht, muss dem Bogen der Wanne folgen — sonst
      schwebt die Kerze an der Wand. Die Höhe wird je Gegenstand aus der
      Ellipse ausgerechnet. */
   const randOben = x => {
-    const t = 1 - ((x - mx) / rx) * ((x - mx) / rx);
-    return t <= 0 ? my : my - Math.round(ry * Math.sqrt(t));
+    const t = 1 - ((x - wmx) / wrx) * ((x - wmx) / wrx);
+    return t <= 0 ? wmy : wmy - Math.round(wry * Math.sqrt(t));
   };
   /* Die Plätze liegen links und rechts, nie in der Mitte: dort sitzt
      Bella, und ein Schiffchen vor ihrem Gesicht sieht nach Fehler aus. */
@@ -1288,9 +1437,15 @@ function maleBadeszene(ctx, s){
     const sp = KLEINKRAM[id];
     if (!sp) return;
     const breit = breiteCm(id, sp);
-    const x = mx + PLATZ[i % PLATZ.length] * rx - breit / 2;
-    maleNachMass(ctx, s, id, sp, x, randOben(x + breit / 2) + 4, null);
+    const eigen = eigenerPlatz('bad', id);
+    const x = eigen ? eigen.x : wmx + PLATZ[i % PLATZ.length] * wrx - breit / 2;
+    const unten = eigen ? eigen.unten : randOben(x + breit / 2) + 4;
+    maleNachMass(ctx, s, id, sp, x, unten, null);
+    if (state.platzieren)
+      rahmenUm(ctx, s, id, sp, { x, unten }, state.platzieren.was === id);
   });
+
+  if (state.platzieren) zonenRahmen(ctx, s, wasser, state.platzieren.was === 'zone_wasser');
 }
 
 /* Ein Wesen oder Gegenstand: liegt eine gelieferte Grafik für den Platz
@@ -1846,6 +2001,8 @@ function alleGaben(){
     gaben.push({ art:'boden', was:k, text:'Ein Boden in ' + BODENFARBEN[k].name + '.' }); });
   Object.keys(BETTZEUG).forEach(k => { if (!DATA.besitz.bett.includes(k))
     gaben.push({ art:'bett', was:k, text:BETTZEUG[k].name + ' fürs Bett.' }); });
+  Object.keys(WANDDEKO).forEach(k => { if (!DATA.besitz.wanddeko.includes(k))
+    gaben.push({ art:'wanddeko', was:k, text:WANDDEKO[k].name + ' für die Wand.' }); });
   Object.keys(BADSPIELZEUG).forEach(k => { if (!DATA.besitz.bad.includes(k))
     gaben.push({ art:'bad', was:k, text:BADSPIELZEUG[k].name + ' für die Wanne.' }); });
   Object.keys(BADEZUSAETZE).forEach(k => { if (!DATA.besitz.zusaetze.includes(k))
@@ -1885,6 +2042,7 @@ async function postAnnehmen(i){
   if (p.art === 'wand'  && !DATA.besitz.waende.includes(p.was))  DATA.besitz.waende.push(p.was);
   if (p.art === 'boden' && !DATA.besitz.boeden.includes(p.was))  DATA.besitz.boeden.push(p.was);
   if (p.art === 'bett'  && !DATA.besitz.bett.includes(p.was))    DATA.besitz.bett.push(p.was);
+  if (p.art === 'wanddeko' && !DATA.besitz.wanddeko.includes(p.was)) DATA.besitz.wanddeko.push(p.was);
   if (p.art === 'bad'   && !DATA.besitz.bad.includes(p.was))     DATA.besitz.bad.push(p.was);
   if (p.art === 'zusatz'&& !DATA.besitz.zusaetze.includes(p.was))DATA.besitz.zusaetze.push(p.was);
   if (p.art === 'zutat') DATA.vorrat[p.was] = Math.min(99, (DATA.vorrat[p.was] || 0) + 3);
@@ -2422,6 +2580,24 @@ function fensterEinrichten(){
       if (!besitz.length) blatt.appendChild(h('div', { class:'leer',
         text:'Noch nichts da — kommt mit der Post.' }));
     }
+    /* Im Schlafzimmer kommt die Wand dazu: Lichterketten, Girlanden,
+       Bilder, Traumfänger, Wandregale. Getrennt vom Bettzeug, weil es an
+       einer anderen Stelle hängt und nicht dieselben drei Plätze
+       belegt. */
+    if (state.raum === 'schlaf'){
+      r.wanddeko = r.wanddeko || [];
+      blatt.appendChild(waehler('HÖCHSTENS ' + WANDDEKO_MAX + ' AN DIE WAND',
+        DATA.besitz.wanddeko.map(id => ({ id, name: WANDDEKO[id].name })),
+        id => r.wanddeko.includes(id),
+        async id => {
+          if (r.wanddeko.includes(id)) r.wanddeko = r.wanddeko.filter(x => x !== id);
+          else if (r.wanddeko.length < WANDDEKO_MAX) r.wanddeko = r.wanddeko.concat(id);
+          else r.wanddeko = r.wanddeko.slice(1).concat(id);
+          await persist(); fensterEinrichten(); render();
+        }));
+      if (!DATA.besitz.wanddeko.length) blatt.appendChild(h('div', { class:'leer',
+        text:'Noch keine Wanddeko — kommt mit der Post.' }));
+    }
     blatt.appendChild(h('div', { class:'zeile' },
       h('button', { class:'taste haupt breit', id:'platzierenbtn', text:'GENAU PLATZIEREN',
                     onclick: fensterPlatzieren })));
@@ -2454,16 +2630,167 @@ function fensterEinrichten(){
 function dingeImRaum(raum){
   const liste = (EINRICHTUNG[raum] || []).map(m => ({ name: m.s, sprite: MOEBEL[m.s] }));
   if (raum === 'kueche') liste.push({ name: 'deko_pflanze', sprite: null });
+  /* Im Schlafzimmer hängt Wanddeko, und in beiden Nahansichten gibt es
+     eine Zone — die Liegefläche und die Wasserfläche. Beides lässt sich
+     genauso verschieben wie ein Möbelstück. */
+  if (raum === 'schlaf')
+    (DATA.raeume.schlaf.wanddeko || []).forEach(id => liste.push({ name: id, sprite: null }));
+  /* Kissen, Kuscheltiere und Badespielzeug auch: bei einer selbst
+     gemalten Wanne oder einem gemalten Bett sitzt meine Vorgabe sonst
+     auf einem Rand, den es dort gar nicht gibt. */
+  ((DATA.raeume[raum] || {}).deko || []).forEach(id =>
+    liste.push({ name: id, sprite: KLEINKRAM[id] }));
+  if (raum === 'bad') liste.push({ name: 'sp_kerze', sprite: KLEINKRAM.sp_kerze });
+  Object.keys(ZONEN[raum] || {}).forEach(id => liste.push({ name: id, sprite: null, zone: true }));
   return liste;
 }
 
 function platzVon(raum, name, s){
   const eigen = eigenerPlatz(raum, name);
   if (eigen) return eigen;
+  /* Wanddeko hängt in der Nische, nicht im Zimmer: ihre Vorgabestelle
+     rechnet sich aus dem Bogen, und die Stücke verteilen sich über die
+     Breite, damit nicht alle übereinander hängen. */
+  const wd = WANDDEKO[name];
+  if (wd) return wanddekoVorgabe(name, wd, s);
+  if (ZONEN[raum] && ZONEN[raum][name]) return zonenVorgabe(raum, name, s);
+  if (KLEINKRAM[name] && (raum === 'schlaf' || raum === 'bad'))
+    return kleinkramVorgabe(raum, name, s);
   const bodenY = s.h - bodenbandCm(s);
   const m = (EINRICHTUNG[raum] || []).find(x => x.s === name);
   if (m) return platzierenCm(m, s, bodenY, raum);
   return { x: s.b - breiteCm(name, null) - 30, unten: bodenY + 2 };
+}
+
+/* Wo ein Stück Wanddeko hängt, solange es nicht verschoben wurde.
+
+   Oben in der Nische ist kein Platz: dort sind schon Fenster, Regal und
+   die eingebaute Lichterkette. Frei ist der Streifen zwischen der
+   Fensterunterkante und der Bettoberkante — dort hängt in einem
+   Schlafzimmer ohnehin, was über dem Bett hängt. Breites geht quer über
+   den Bogen, wo es nichts verdeckt. */
+function wanddekoVorgabe(name, wd, s){
+  return wanddekoPlaetze(s)[name] || { x: 0, unten: 0 };
+}
+
+/* Alle Vorgabestellen auf einmal, und zwar so, dass sich nichts deckt.
+
+   Feste Plätze reichen nicht: die Nische ist eng, die Stücke sind
+   verschieden breit, und bei vier gleichzeitig lag immer eines über dem
+   anderen. Deshalb bekommt jedes seinen Wunschplatz und weicht nach
+   unten aus, bis es frei steht. Das Ergebnis hängt nur an der Auswahl,
+   nicht am Zufall — dieselbe Auswahl gibt immer dasselbe Bild. */
+function wanddekoPlaetze(s){
+  const n = nischeMasse(s);
+  const bettOben = (n.unten - 12) - Math.max(12, Math.round(s.h * 0.085));
+  const gewaehlt = (DATA.raeume.schlaf.wanddeko || []).filter(id => WANDDEKO[id]);
+
+  /* Breites zuerst und weit oben, Schmales darunter — sonst schiebt sich
+     eine 150 cm lange Kette zwischen zwei Bilder. */
+  const reihenfolge = gewaehlt.slice().sort((a, b) =>
+    (WANDDEKO[b].breit ? 1 : 0) - (WANDDEKO[a].breit ? 1 : 0));
+
+  const gesetzt = [];
+  const ergebnis = {};
+  reihenfolge.forEach(id => {
+    const breit = breiteCm(id, null), hoch = groesseCm(id) || 30;
+    /* Gesucht wird die erste freie Stelle in einem Raster über die
+       ganze Nische — beide Achsen, nicht nur ein paar feste Spalten.
+       Mit festen Spalten gab es immer eine Auswahl, für die keine
+       davon passte.
+
+       Links oben ist das Fenster, dort darf nichts hängen; rechts ist
+       die Wand frei, seit das eingebaute Regal der eigenen Deko weicht.
+       Bevorzugt wird weit oben und weit außen; die Deckelung am Bett
+       steckt schon im Raster, sonst zöge sie ein ausgewichenes Stück
+       wieder ins Besetzte zurück. */
+    const yBis = bettOben - hoch - 2;
+    const xMitte = n.mx - breit / 2;
+    const kandidaten = [];
+    if (WANDDEKO[id].breit){
+      for (let y = n.my - n.ry * 0.88; y <= yBis; y += 6) kandidaten.push({ x: xMitte, y });
+    } else {
+      const fensterRechts = n.mx - n.rx * 0.04;   // rechte Kante des Fensters
+      const fensterUnten  = n.my + n.ry * 0.16;
+      for (let y = n.my - n.ry * 0.74; y <= yBis; y += 6){
+        const reihe = [];
+        for (let x = n.links + 2; x + breit <= n.rechts - 2; x += 3){
+          // Über dem Fenster hängt nichts.
+          if (y < fensterUnten && x < fensterRechts) continue;
+          reihe.push({ x, y, aussen: Math.abs(x + breit / 2 - n.mx) });
+        }
+        // In jeder Reihe zuerst weit außen: dort stört es am wenigsten.
+        reihe.sort((p1, p2) => p2.aussen - p1.aussen);
+        kandidaten.push(...reihe);
+      }
+    }
+    /* Genommen wird die erste ganz freie Stelle. Findet sich keine — die
+       Nische ist klein, drei große Stücke füllen sie —, dann die mit der
+       kleinsten Überdeckung, statt blind in die Mitte zu legen. */
+    const deckung = k => gesetzt.reduce((summe, g) => summe
+      + Math.max(0, Math.min(k.x + breit, g.x + g.b) - Math.max(k.x, g.x))
+      * Math.max(0, Math.min(k.y + hoch, g.y + g.h) - Math.max(k.y, g.y)), 0);
+    let p = null, beste = Infinity;
+    for (const k of kandidaten){
+      const d = deckung(k);
+      if (d === 0){ p = k; break; }
+      if (d < beste){ beste = d; p = k; }
+    }
+    if (!p) p = { x: xMitte, y: Math.max(0, yBis) };
+    gesetzt.push({ x: p.x, y: p.y, b: breit, h: hoch, breit: !!WANDDEKO[id].breit });
+    ergebnis[id] = { x: p.x, unten: p.y + hoch };
+  });
+  return ergebnis;
+}
+
+/* Wo Kissen, Kuscheltiere und Badespielzeug liegen, solange sie nicht
+   verschoben wurden — dieselbe Stelle, die die Szene ohne eigene Werte
+   zeichnet. */
+function kleinkramVorgabe(raum, name, s){
+  const breit = breiteCm(name, KLEINKRAM[name]);
+  if (raum === 'bad'){
+    const w = wanneMasse(s);
+    const wasser = zone('bad', 'zone_wasser', zonenVorgabe('bad', 'zone_wasser', s));
+    const wmx = wasser.x + wasser.b / 2, wry = wasser.h / 2;
+    const rand = ['sp_kerze'].concat((DATA.raeume.bad.deko || []).slice(0, 3));
+    const i = Math.max(0, rand.indexOf(name));
+    const PLATZ = [-0.86, -0.58, 0.58, 0.86];
+    const x = wmx + PLATZ[i % PLATZ.length] * (wasser.b / 2) - breit / 2;
+    return { x, unten: wasser.unten - wasser.h / 2 - wry * 0.55 };
+  }
+  const n = nischeMasse(s);
+  const bettUnten = n.unten - 12, bettRx = n.rx - 6;
+  const matratzeHoch = Math.max(12, Math.round(s.h * 0.085));
+  const liste = (DATA.raeume.schlaf.deko || []);
+  const i = Math.max(0, liste.indexOf(name));
+  return { x: n.mx + bettRx - 10 - (i + 1) * (breit + 5),
+           unten: bettUnten - matratzeHoch + 4 };
+}
+
+/* Wo eine Zone liegt, wenn sie noch nicht verschoben wurde: genau da,
+   wo die gezeichnete Fassung sie hat. */
+function zonenVorgabe(raum, name, s){
+  if (name === 'zone_liege'){
+    const n = nischeMasse(s);
+    const bettUnten = n.unten - 12, bettRx = n.rx - 6;
+    const matratzeHoch = Math.max(12, Math.round(s.h * 0.085));
+    return { x: n.mx - bettRx + 6, unten: bettUnten - matratzeHoch,
+             b: bettRx * 2 - 12, h: 46 };
+  }
+  if (name === 'zone_wasser'){
+    const w = wanneMasse(s);
+    return { x: w.mx - w.rx + 14, unten: w.my + w.ry - 12,
+             b: (w.rx - 14) * 2, h: (w.ry - 12) * 2 };
+  }
+  return { x: 0, unten: 0, b: 40, h: 40 };
+}
+
+async function zoneSetzen(name, b, h){
+  if (!zoneDa(name)) return;
+  DATA.zonen = DATA.zonen || {};
+  DATA.zonen[name] = { b: Math.max(10, Math.round(b)), h: Math.max(10, Math.round(h)) };
+  await persist();
+  render();
 }
 
 async function platzSetzen(raum, name, x, unten){
@@ -2508,26 +2835,48 @@ function fensterPlatzieren(){
       id => { state.platzieren = { was: id }; fensterPlatzieren(); render(); }));
 
     const s = buehneMasse();
-    const p = platzVon(raum, state.platzieren.was, s);
+    const was = state.platzieren.was;
+    const p = platzVon(raum, was, s);
+    const istZone = zoneDa(was);
+    const masse = istZone ? zone(raum, was, zonenVorgabe(raum, was, s)) : null;
     blatt.appendChild(h('div', { class:'block' },
       h('div', { class:'blockkopf', id:'platzwert',
-                 text: 'x ' + p.x.toFixed(1) + ' cm · unten ' + p.unten.toFixed(1) + ' cm' }),
+                 text: 'x ' + p.x.toFixed(1) + ' cm · unten ' + p.unten.toFixed(1) + ' cm'
+                     + (istZone ? ' · ' + masse.b.toFixed(0) + ' × ' + masse.h.toFixed(0) + ' cm' : '') }),
       h('div', { class:'zeile' },
         ...[['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]].map(([z, dx, dy]) =>
           h('button', { class:'taste', text: z, 'data-schieb': z, onclick: async () => {
-            const jetzt = platzVon(raum, state.platzieren.was, buehneMasse());
-            await platzSetzen(raum, state.platzieren.was, jetzt.x + dx, jetzt.unten + dy);
+            const jetzt = platzVon(raum, was, buehneMasse());
+            await platzSetzen(raum, was, jetzt.x + dx, jetzt.unten + dy);
             fensterPlatzieren();
           } })))));
+
+    /* Eine Zone hat außer der Stelle auch eine Größe. Die braucht nur,
+       wer Bett oder Wanne selbst gemalt hat — deshalb stehen diese
+       Knöpfe nur bei einer Zone da. */
+    if (istZone){
+      blatt.appendChild(h('div', { class:'block' },
+        h('div', { class:'blockkopf', text:'GRÖSSE DER FLÄCHE' }),
+        h('div', { class:'zeile' },
+          ...[['BREITER', 2, 0], ['SCHMALER', -2, 0], ['HÖHER', 0, 2], ['FLACHER', 0, -2]]
+            .map(([z, db, dh]) =>
+              h('button', { class:'taste', text: z, 'data-groesse': z, onclick: async () => {
+                const jetzt = zone(raum, was, zonenVorgabe(raum, was, buehneMasse()));
+                await zoneSetzen(was, jetzt.b + db, jetzt.h + dh);
+                fensterPlatzieren();
+              } })))));
+    }
 
     blatt.appendChild(h('div', { class:'zeile' },
       h('button', { class:'taste', id:'platzzurueck', text:'ZURÜCKSETZEN', onclick: async () => {
         if (DATA.plaetze[raum]) delete DATA.plaetze[raum][state.platzieren.was];
+        if (DATA.zonen) delete DATA.zonen[state.platzieren.was];
         await persist(); fensterPlatzieren(); render();
       } }),
       h('button', { class:'taste haupt', id:'platzausgeben', text:'ZAHLEN ZEIGEN', onclick: () => {
         const feld = document.getElementById('platzausgabe');
-        if (feld) feld.textContent = JSON.stringify(DATA.plaetze, null, 1);
+        if (feld) feld.textContent =
+          JSON.stringify({ plaetze: DATA.plaetze, zonen: DATA.zonen }, null, 1);
       } })));
     blatt.appendChild(h('pre', { class:'ausgabe', id:'platzausgabe',
       text:'Hier erscheinen die Zahlen zum Weitergeben.' }));
@@ -2727,8 +3076,23 @@ function bildplaetzeAnmelden(){
   Object.keys(ZUTATEN).forEach(z => bildplatzAnlegen('zutat_' + z));
   Object.keys(SNACKS).forEach(sn => bildplatzAnlegen('snack_' + sn));
   REZEPTE.forEach(r => bildplatzAnlegen('gericht_' + r.id));
-  Object.keys(MOEBEL).forEach(m => bildplatzAnlegen('moebel_' + m));
+  /* Die Möbel hießen hier einmal `moebel_herd`, gezeichnet wird aber
+     unter `herd`. Eine hochgeladene Möbeldatei wäre damit nie
+     angekommen — der Platz stand in der Liste, gesucht wurde ein
+     anderer. */
+  Object.keys(MOEBEL).forEach(m => bildplatzAnlegen(m));
   Object.keys(KLEINKRAM).forEach(k => bildplatzAnlegen(k));
+  Object.keys(WANDDEKO).forEach(w => bildplatzAnlegen(w));
+  // Das Bett in der Nische: eigener Platz, weil es nicht das
+  // Zimmermöbel `bett` ist, sondern die Nahansicht.
+  bildplatzAnlegen('bett_nische');
+  /* Je Badezusatz eine gemalte Wanne — das Wasser ist darin schon
+     gemalt. Dazu je Zusatz eine Blase, falls die auch von Hand kommen
+     soll; fehlt sie, wird weiter die gezeichnete genommen. */
+  Object.keys(BADEZUSAETZE).forEach(z => {
+    bildplatzAnlegen('wanne_' + z);
+    bildplatzAnlegen('blase_' + z);
+  });
 }
 
 /* Nur für die Vorschau im Chat: alles freigeschaltet und der Vorrat
@@ -2743,6 +3107,7 @@ function allesFreischalten(){
   DATA.besitz.waende   = Object.keys(WANDFARBEN);
   DATA.besitz.boeden   = Object.keys(BODENFARBEN);
   DATA.besitz.bett     = Object.keys(BETTZEUG);
+  DATA.besitz.wanddeko = Object.keys(WANDDEKO);
   DATA.besitz.bad      = Object.keys(BADSPIELZEUG);
   DATA.besitz.zusaetze = Object.keys(BADEZUSAETZE);
   Object.keys(ZUTATEN).forEach(z => { DATA.vorrat[z] = 9; });

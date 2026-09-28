@@ -85,6 +85,10 @@ const GROESSEN_CM = {
   schrank:      190,
   stange:       40,
 
+  /* Wanddeko. Hängt an der Wand; wie hoch, steht bei WANDDEKO. */
+  wd_lichterkette: 20, wd_girlande: 28, wd_bild: 50, wd_bild_gross: 75,
+  wd_traumfaenger: 70, wd_wandregal: 22,
+
   kissen_a: 35, kissen_b: 35, kissen_c: 35,
   ku_baer: 30, ku_hase: 34, ku_frosch: 24, ku_katze: 28,
   sp_ente: 9, sp_schiff: 11, sp_stern: 8, sp_kerze: 18,
@@ -102,6 +106,9 @@ const BREITEN_CM = {
   herd:         60,  kuehlschrank: 60, tisch: 120, sofa: 180,
   regal:        90,  pflanze: 45,  wanne: 150, waschbecken: 55,
   spiegel:      60,  schrank: 110, stange: 120,
+
+  wd_lichterkette: 150, wd_girlande: 130, wd_bild: 40, wd_bild_gross: 60,
+  wd_traumfaenger: 32,  wd_wandregal: 80,
 };
 
 function groesseCm(name){ return GROESSEN_CM[name] || null; }
