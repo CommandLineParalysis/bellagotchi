@@ -138,15 +138,43 @@ Planschen**. Deshalb: Stift oben rechts → **Genau platzieren** →
 HÖHER/FLACHER an deine Wanne anpassen. Im Platzierungs-Modus ist die
 Fläche als gestrichelter Rahmen zu sehen.
 
-## Bett im Schlafzimmer
+## Schlafzimmer — ein Bild für alles
+
+Der übliche Weg: **eine Datei mit Bett, Wand und Fenster zusammen.**
 
 | Platz | Empfohlene Größe |
 |---|---|
-| `bett_nische` | **1008 × 336 px** (180 × 60 cm) |
+| `szene_nische` | **1176 × 1320 px** (210 × 236 cm) |
+| `szene_nische_dunkel` | dieselbe Größe, für „Licht aus" |
 
-Liegt die Datei, ersetzt sie Matratze und Kissenwand vollständig. Wo
-Bella darin liegt, sagt die Zone `zone_liege` — genauso einzustellen wie
-die Wasserfläche.
+Liegt `szene_nische`, wird von meiner gezeichneten Nische **nichts** mehr
+gezeigt: kein Bogen, kein Fenster, kein Regal, keine Matratze, kein
+Teppich. Das Bild ist der ganze Hintergrund.
+
+Verankert wird unten mittig. Die Höhe braucht Reserve, weil die
+Bildschirme verschieden hoch sind — 1320 px deckt alle Handys ab; wird
+weniger gebraucht, wird oben abgeschnitten, wird mehr gebraucht, läuft
+die oberste Zeile weiter.
+
+Für **Licht aus** malst du dieselbe Nische ein zweites Mal, dunkel, mit
+leuchtendem Fenster. Fehlt die Datei, wird das helle Bild einfach
+abgedunkelt — dann ist allerdings auch das Fenster dunkel, denn was
+darin leuchtet, weiß nur, wer es gemalt hat.
+
+**Darüber** liegen nur noch: Bella mit ihrer Decke, die Wanddeko und
+was auf dem Bett abgelegt ist. Alles davon lässt sich frei setzen
+(Stift → Genau platzieren).
+
+Wo Bella liegt, sagt die Zone `zone_liege` — verschieben und in der
+Größe ändern wie die Wasserfläche. Das ist die einzige Angabe, die die
+App aus deinem Bild nicht ablesen kann.
+
+### Nur das Bett austauschen
+
+Wer die Nische behalten und bloß das Bett ersetzen will, nimmt
+stattdessen `bett_nische` (Vorlage 1008 × 336 px). Dann bleiben Bogen,
+Fenster und Regal gezeichnet. Für `bett_nische` steht keine Größe im
+Code — die Datei bestimmt sie selbst, Punkte ÷ 5,6 = Zentimeter.
 
 ## Wanddeko
 

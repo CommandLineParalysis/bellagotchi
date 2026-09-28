@@ -658,7 +658,7 @@ function breiteCm(name, raster){
 
    Nichts wird verzerrt und nichts umgefärbt: eine Datei wird nur auf
    ihre Zentimeter gebracht. */
-function maleFlaeche(ctx, s, platz, xCm, yCm, bCm, hCm, vonUnten){
+function maleFlaeche(ctx, s, platz, xCm, yCm, bCm, hCm, vonUnten, bahnBreiteCm){
   const b = BILDER[platz];
   if (!b || !ctx.drawImage || !ctx.save) return false;
   const p = v => Math.round(v * s.mass);
@@ -670,10 +670,13 @@ function maleFlaeche(ctx, s, platz, xCm, yCm, bCm, hCm, vonUnten){
   ctx.rect(x0, y0, x1 - x0, y1 - y0);
   ctx.clip();
 
+  /* Woran sich eine Bahn misst: im Zimmer die Zimmerbreite, in einer
+     Nahansicht deren Ausschnitt. */
+  const bahn = bahnBreiteCm || ZIMMER.breiteCm;
   const eigenBreiteCm = b.b / MODELL_PX_JE_CM;
-  if (eigenBreiteCm >= ZIMMER.breiteCm - 2){
+  if (eigenBreiteCm >= bahn - 2){
     // Bahn: in Zimmerbreite, mittig, am gewünschten Rand verankert.
-    const zb = p(ZIMMER.breiteCm) - p(0);
+    const zb = p(bahn) - p(0);
     const zh = Math.max(1, Math.round(b.h * zb / b.b));
     const zx = x0 + Math.round(((x1 - x0) - zb) / 2);
     const zy = vonUnten ? y1 - zh : y0;
@@ -1195,6 +1198,24 @@ function maleSchlafnische(ctx, s){
   const n = nischeMasse(s);
   const mx = n.mx, rx = n.rx, ry = n.ry, my = n.my, unten = n.unten;
 
+  /* Ein einziges Bild für die ganze Nische: Bett, Wand, Fenster, alles
+     zusammen. Liegt es vor, wird nichts davon mehr gezeichnet — nur
+     Bella, die Decke und die Deko kommen darüber, und die lassen sich
+     frei setzen.
+
+     Für „Licht aus" gibt es einen zweiten Platz. Fehlt er, wird das
+     helle Bild abgedunkelt; dann ist allerdings auch das Fenster dunkel,
+     denn was darin Licht ist, weiß nur, wer es gemalt hat. */
+  const dunkelPlatz = 'szene_nische_dunkel';
+  const eigenesDunkel = !lichtAn() && bildDa(dunkelPlatz);
+  const szenenPlatz = eigenesDunkel ? dunkelPlatz : 'szene_nische';
+  const gemalteNische = maleFlaeche(ctx, s, szenenPlatz, 0, 0, s.b, s.h, true, s.b);
+  if (gemalteNische){
+    if (!lichtAn() && !eigenesDunkel) px(ctx, s, 0, 0, s.b, s.h, 'rgba(8,6,24,.62)');
+    maleNischeninhalt(ctx, s, n);
+    return;
+  }
+
   px(ctx, s, 0, 0, s.b, s.h, NISCHE.wand);
   px(ctx, s, 0, s.h - 12, s.b, 12, NISCHE.wandtief);
 
@@ -1255,57 +1276,21 @@ function maleSchlafnische(ctx, s){
     maleRegal(ctx, s, gx, gy, Math.min(gb, mx + rx - gx - 3), gh);
   }
 
-  /* Die Wanddeko hängt über dem Bett, innerhalb der Nische. Jedes Stück
-     an seiner eigenen Höhe über dem Boden; verschieben lässt sich alles
-     im Platzierungs-Modus. */
-  (DATA.raeume.schlaf.wanddeko || []).slice(0, WANDDEKO_MAX).forEach((id, i) => {
-    const w = WANDDEKO[id];
-    if (!w) return;
-    const p = platzVon('schlaf', id, s);
-    maleNachMass(ctx, s, id, null, p.x, p.unten, null);
-    if (state.platzieren) rahmenUm(ctx, s, id, null, p, state.platzieren.was === id);
-  });
-
   /* Das Bett füllt das untere Drittel der Nische. Vorher war es eine
      flache Scheibe am unteren Rand und Bella lag halb hinter der
      Sprechblase.
 
      Liegt eine gemalte Bettdatei vor, tritt sie an die Stelle von
-     Kissenwand und Matratze — wo Bella dann liegt, sagt die Zone
-     `zone_liege`, die sich verschieben lässt. */
+     Kissenwand und Matratze. */
   const bettUnten = unten - 12, bettRx = rx - 6;
   const matratzeHoch = Math.max(12, Math.round(s.h * 0.085));
-  const oberkante = bettUnten - matratzeHoch;
   const gemaltesBett = maleBildNachMass(ctx, s, 'bett_nische', mx - bettRx, bettUnten);
   if (!gemaltesBett){
-    maleKissenwand(ctx, s, mx, oberkante + 2, bettRx, Math.max(7, matratzeHoch * 0.55));
+    maleKissenwand(ctx, s, mx, bettUnten - matratzeHoch + 2, bettRx, Math.max(7, matratzeHoch * 0.55));
     maleMatratze(ctx, s, mx, bettUnten, bettRx, matratzeHoch);
   }
-  const liege = zone('schlaf', 'zone_liege',
-                     { x: mx - bettRx + 6, unten: oberkante, b: bettRx * 2 - 12, h: 46 });
-  if (DATA.bella.ort === 'schlaf')
-    maleBellaImBett(ctx, s, liege.x + liege.b / 2, liege.unten, liege.b / 2 - 16);
-  if (state.platzieren)
-    zonenRahmen(ctx, s, liege, state.platzieren.was === 'zone_liege');
 
-  /* Was aus der Post auf dem Bett liegt: am rechten Bettende, nicht
-     über Bella — sie liegt links mit dem Kopf am Kissen. */
-  const abgelegt = DATA.raeume.schlaf.deko || [];
-  let dx = mx + bettRx - 10;
-  abgelegt.slice(0, 3).forEach(id => {
-    const sp = KLEINKRAM[id];
-    if (!sp) return;
-    const breit = breiteCm(id, sp);
-    dx -= breit;
-    const eigen = eigenerPlatz('schlaf', id);
-    if (!eigen && dx < mx + 18) return;    // näher an Bella wird nichts abgelegt
-    const px0 = eigen ? eigen.x : dx;
-    const py0 = eigen ? eigen.unten : oberkante + 4;
-    maleNachMass(ctx, s, id, sp, px0, py0, null);
-    if (state.platzieren)
-      rahmenUm(ctx, s, id, sp, { x: px0, unten: py0 }, state.platzieren.was === id);
-    dx -= 5;
-  });
+  maleNischeninhalt(ctx, s, n);
 
   /* Der warme Lichtsaum unter der Nischenkante — in der Vorlage ist er
      das, was den Raum gemütlich macht. Zwei Zeilen: die obere heller.
@@ -1328,6 +1313,53 @@ function maleSchlafnische(ctx, s){
     fenster();
     lichterkette();
   }
+}
+
+/* Was in der Nische auf dem Hintergrund liegt: Wanddeko, Bella mit
+   Decke, und was auf dem Bett abgelegt ist. Das ist derselbe Inhalt,
+   ob die Nische gezeichnet oder gemalt ist — deshalb steht er hier für
+   sich und nicht zweimal. */
+function maleNischeninhalt(ctx, s, n){
+  const mx = n.mx, rx = n.rx, unten = n.unten;
+  const bettUnten = unten - 12, bettRx = rx - 6;
+  const matratzeHoch = Math.max(12, Math.round(s.h * 0.085));
+  const oberkante = bettUnten - matratzeHoch;
+
+  /* Die Wanddeko hängt an der Wand; jedes Stück lässt sich im
+     Platzierungs-Modus frei setzen. */
+  (DATA.raeume.schlaf.wanddeko || []).slice(0, WANDDEKO_MAX).forEach(id => {
+    if (!WANDDEKO[id]) return;
+    const p = platzVon('schlaf', id, s);
+    maleNachMass(ctx, s, id, null, p.x, p.unten, null);
+    if (state.platzieren) rahmenUm(ctx, s, id, null, p, state.platzieren.was === id);
+  });
+
+  /* Wo Bella liegt, sagt die Zone — bei einem gemalten Hintergrund ist
+     das die einzige Angabe, die die App nicht erraten kann. */
+  const liege = zone('schlaf', 'zone_liege',
+                     { x: mx - bettRx + 6, unten: oberkante, b: bettRx * 2 - 12, h: 46 });
+  if (DATA.bella.ort === 'schlaf')
+    maleBellaImBett(ctx, s, liege.x + liege.b / 2, liege.unten, liege.b / 2 - 16);
+  if (state.platzieren)
+    zonenRahmen(ctx, s, liege, state.platzieren.was === 'zone_liege');
+
+  /* Was aus der Post auf dem Bett liegt: am rechten Bettende, nicht
+     über Bella — sie liegt links mit dem Kopf am Kissen. */
+  let dx = mx + bettRx - 10;
+  (DATA.raeume.schlaf.deko || []).slice(0, 3).forEach(id => {
+    const sp = KLEINKRAM[id];
+    if (!sp) return;
+    const breit = breiteCm(id, sp);
+    dx -= breit;
+    const eigen = eigenerPlatz('schlaf', id);
+    if (!eigen && dx < mx + 18) return;    // näher an Bella wird nichts abgelegt
+    const px0 = eigen ? eigen.x : dx;
+    const py0 = eigen ? eigen.unten : oberkante + 4;
+    maleNachMass(ctx, s, id, sp, px0, py0, null);
+    if (state.platzieren)
+      rahmenUm(ctx, s, id, sp, { x: px0, unten: py0 }, state.platzieren.was === id);
+    dx -= 5;
+  });
 }
 
 /* ---------- Die Badeszene ----------

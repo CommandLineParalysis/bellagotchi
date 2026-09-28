@@ -24,6 +24,7 @@ const BILDPLAETZE = {
   // Hintergrund der Szene vollständig; Bella und die Gegenstände werden
   // darüber gelegt.
   szene_nische:   '',
+  szene_nische_dunkel: '',
   szene_wanne:    '',
   szene_kueche:   '',
   szene_wohnen:   '',
