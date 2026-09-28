@@ -38,7 +38,7 @@ function leererVault(){
     zeiten: { einschlafen: '02:30', aufwachen: '10:30' },
     raeume: {
       schlaf:  { wand:'flieder', wandmuster:'wand_punkte',   boden:'eiche', bodenmuster:'boden_diele',
-                 deko: ['kissen_a'] },
+                 deko: ['kissen_a'], licht: true },
       kueche:  { wand:'butter',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese' },
       wohnen:  { wand:'minze',   wandmuster:'wand_streifen', boden:'eiche', bodenmuster:'boden_diele' },
       bad:     { wand:'himmel',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese',
@@ -78,6 +78,7 @@ const state = {
   szene: null,        // läuft gerade eine Kochszene?
   essen: null,        // isst Bella gerade in der Küche?
   dusche: null,       // läuft gerade das Abbrausen?
+  plansch: null,      // planscht Bella gerade in der Wanne?
   platzieren: null,   // { was } — welcher Gegenstand gerade gesetzt wird
   bildzaehler: 0,     // treibt die Zappel-Animation
 };
@@ -152,6 +153,7 @@ function adoptVault(saved){
       boden: BODENFARBEN[q.boden] ? q.boden : d.boden,
       bodenmuster: KACHELN[q.bodenmuster] ? q.bodenmuster : d.bodenmuster,
       deko: (Array.isArray(q.deko) ? q.deko : (d.deko || [])).filter(x => KLEINKRAM[x]).slice(0, 3),
+      licht: typeof q.licht === 'boolean' ? q.licht : (d.licht !== false),
     };
   });
 
@@ -379,7 +381,15 @@ function schlafMinuten(von, bis){
 
 /* Pro Stunde. Wach zehrt alles, Schlaf füllt das Ausgeruht wieder auf. */
 const ZEHRUNG = { satt: 3.2, sauber: 2.0, ausgeruht: 4.6 };
+/* Im Dunkeln schläft sie besser. Gerechnet wird mit dem Licht, wie es
+   gerade steht — wann im Nachhinein geschaltet wurde, weiß die App
+   nicht, und dafür eine Schaltuhr mitzuschreiben wäre mehr Aufwand als
+   Nutzen. */
 const ERHOLUNG = 11;
+const ERHOLUNG_HELL = 7;
+
+function lichtAn(){ return DATA.raeume.schlaf.licht !== false; }
+function erholungJetzt(){ return lichtAn() ? ERHOLUNG_HELL : ERHOLUNG; }
 
 /* Höchstens so viele Stunden werden nachgerechnet. Wer einen Monat weg
    war, findet Bella traurig vor — aber nicht auf null, und ein paar
@@ -410,7 +420,7 @@ function standFortschreiben(jetzt){
 
   b.satt      = begrenzen(b.satt      - ZEHRUNG.satt      * minuten / 60);
   b.sauber    = begrenzen(b.sauber    - ZEHRUNG.sauber    * minuten / 60);
-  b.ausgeruht = begrenzen(b.ausgeruht - ZEHRUNG.ausgeruht * wach / 60 + ERHOLUNG * schlaf / 60);
+  b.ausgeruht = begrenzen(b.ausgeruht - ZEHRUNG.ausgeruht * wach / 60 + erholungJetzt() * schlaf / 60);
 
   // Die Laune folgt den anderen dreien, langsam und immer nur bis zu
   // einem Rest: ganz unten landet sie nie.
@@ -1041,14 +1051,18 @@ function maleSchlafnische(ctx, s){
 
   /* Lichterkette am oberen Bogen — in der Vorlage ist sie das, was die
      Nische warm macht. Die Punkte sitzen auf der Ellipse selbst, damit
-     sie der Rundung folgen statt auf einer Geraden zu hängen. */
-  for (let i = 0; i <= 14; i++){
-    const w = Math.PI + (i / 14) * Math.PI;      // oberer Halbkreis
-    const lx = Math.round(mx + Math.cos(w) * (rx - 3));
-    const ly = Math.round(my + Math.sin(w) * (ry - 3));
-    px(ctx, s, lx - 1.5, ly - 1.5, 4, 4, 'rgba(255,201,138,.30)');
-    px(ctx, s, lx - 0.7, ly - 0.7, 1.6, 1.6, (i % 3) ? NISCHE.warm : '#FFF0D0');
-  }
+     sie der Rundung folgen statt auf einer Geraden zu hängen. Sie ist
+     das Nachtlicht: sie bleibt an, wenn das Deckenlicht ausgeht. */
+  const lichterkette = () => {
+    for (let i = 0; i <= 14; i++){
+      const w = Math.PI + (i / 14) * Math.PI;      // oberer Halbkreis
+      const lx = Math.round(mx + Math.cos(w) * (rx - 3));
+      const ly = Math.round(my + Math.sin(w) * (ry - 3));
+      px(ctx, s, lx - 1.5, ly - 1.5, 4, 4, 'rgba(255,201,138,.30)');
+      px(ctx, s, lx - 0.7, ly - 0.7, 1.6, 1.6, (i % 3) ? NISCHE.warm : '#FFF0D0');
+    }
+  };
+  lichterkette();
 
   // Eine Hängepflanze, damit die Wand nicht leer bleibt.
   const px0 = mx - Math.round(rx * 0.52), py0 = my - Math.round(ry * 0.10);
@@ -1063,13 +1077,16 @@ function maleSchlafnische(ctx, s){
   // Fenster links, Regal rechts — beide innerhalb der Nische.
   const fb = Math.round(rx * 0.72), fh = Math.round(ry * 0.92);
   const fx = mx - rx + Math.round(rx * 0.18), fy = my - ry + Math.round(ry * 0.22);
-  px(ctx, s, fx - 2, fy - 2, fb + 4, fh + 4, '#4A3A38');
-  maleStadt(ctx, s, fx, fy, fb, fh);
-  px(ctx, s, fx + Math.round(fb / 2), fy, 2, fh, '#4A3A38');
-  px(ctx, s, fx, fy + Math.round(fh / 2), fb, 2, '#4A3A38');
-  // Vorhang am rechten Fensterrand
-  px(ctx, s, fx + fb, fy - 2, 4, fh + 4, '#D8C3A5');
-  px(ctx, s, fx + fb + 1, fy - 2, 1, fh + 4, '#EFE0C8');
+  const fenster = () => {
+    px(ctx, s, fx - 2, fy - 2, fb + 4, fh + 4, '#4A3A38');
+    maleStadt(ctx, s, fx, fy, fb, fh);
+    px(ctx, s, fx + Math.round(fb / 2), fy, 2, fh, '#4A3A38');
+    px(ctx, s, fx, fy + Math.round(fh / 2), fb, 2, '#4A3A38');
+    // Vorhang am rechten Fensterrand
+    px(ctx, s, fx + fb, fy - 2, 4, fh + 4, '#D8C3A5');
+    px(ctx, s, fx + fb + 1, fy - 2, 1, fh + 4, '#EFE0C8');
+  };
+  fenster();
 
   const gb = Math.round(rx * 0.62), gh = Math.round(ry * 0.78);
   const gx = mx + Math.round(rx * 0.16), gy = my - ry + Math.round(ry * 0.26);
@@ -1100,12 +1117,26 @@ function maleSchlafnische(ctx, s){
   });
 
   /* Der warme Lichtsaum unter der Nischenkante — in der Vorlage ist er
-     das, was den Raum gemütlich macht. Zwei Zeilen: die obere heller. */
-  px(ctx, s, mx - rx, unten, rx * 2, 1.5, NISCHE.warm);
-  px(ctx, s, mx - rx + 4, unten + 1.5, rx * 2 - 8, 1.5, NISCHE.glut);
+     das, was den Raum gemütlich macht. Zwei Zeilen: die obere heller.
+     Er hängt am Deckenlicht und geht mit ihm aus. */
+  if (lichtAn()){
+    px(ctx, s, mx - rx, unten, rx * 2, 1.5, NISCHE.warm);
+    px(ctx, s, mx - rx + 4, unten + 1.5, rx * 2 - 8, 1.5, NISCHE.glut);
+  }
   // Der Teppich davor, angedeutet als flache Ellipse.
   ellipse(ctx, s, mx, s.h - 4, Math.round(rx * 0.7), 5, '#4A3A42');
   ellipse(ctx, s, mx, s.h - 6, Math.round(rx * 0.62), 4, '#5C4750');
+
+  /* Licht aus: eine ruhige dunkle Fläche über alles — kein Muster, das
+     würde über der Pixelgrafik liegen. Fenster und Lichterkette werden
+     danach wieder in voller Farbe gesetzt: sie sind die beiden
+     Lichtquellen, die bleiben, und ohne sie wäre das Bild nur dunkel
+     statt nächtlich. */
+  if (!lichtAn()){
+    px(ctx, s, 0, 0, s.b, s.h, 'rgba(8,6,24,.62)');
+    fenster();
+    lichterkette();
+  }
 }
 
 /* ---------- Die Badeszene ----------
@@ -1175,6 +1206,7 @@ function maleBadeszene(ctx, s){
   }
 
   if (state.dusche && inDerWanne) maleDusche(ctx, s, mx, by - kopfHoch);
+  if (state.plansch && inDerWanne) malePlanschen(ctx, s, w);
 
   /* Was auf dem Rand steht, muss dem Bogen der Wanne folgen — sonst
      schwebt die Kerze an der Wand. Die Höhe wird je Gegenstand aus der
@@ -1198,15 +1230,26 @@ function maleBadeszene(ctx, s){
 
 /* Ein Wesen oder Gegenstand: liegt eine gelieferte Grafik für den Platz
    vor, wird sie genommen; sonst der gezeichnete Platzhalter. */
-/* Dasselbe Bild, aber um einen ganzen Faktor vergrößert — für die
-   Kochszene, in der Zutat und Gericht die Hauptsache sind. */
-function maleGross(ctx, s, platz, sprite, x, y, faktor){
-  /* In den Kochkarten wird nicht nach Weltgröße gezeichnet, sondern
-     nach Bildwirkung: Zutat und Gericht sind dort die Hauptsache. */
-  const zug = s.mass * (faktor || 1);
-  if (BILDER[platz]){ maleBildNachMass(ctx, s, platz, x, y + (BILDER[platz].h / MODELL_PX_JE_CM)); return; }
-  if (!sprite) return;
-  const rows = sprite.p || sprite;
+/* Dasselbe Bild, aber groß — für die Kochszene, in der Zutat und
+   Gericht die Hauptsache sind. Dort wird nicht nach Weltgröße
+   gezeichnet, sondern nach Bildwirkung.
+
+   `hochCm` sagt, wie hoch das Stück auf der Karte sein soll. Gelieferte
+   Datei und Platzhalter bekommen dieselbe Höhe — vorher richtete sich
+   der Platzhalter nach dem Faktor und die Datei nach ihrer eigenen
+   Auflösung, und eine hochgeladene Zutat war halb so groß wie die
+   gezeichnete daneben. */
+function maleGross(ctx, s, platz, sprite, x, y, faktor, hochCm){
+  const rows = sprite && (sprite.p || sprite);
+  const hoch = hochCm || (rows ? rows.length * (faktor || 1) : 24);
+  const b = BILDER[platz];
+  if (b){
+    const hp = Math.round(hoch * s.mass);
+    ctx.drawImage(b.el, Math.round(x * s.mass), Math.round(y * s.mass),
+                  Math.round(hp * b.b / b.h), hp);
+    return;
+  }
+  if (!rows) return;
   for (let j = 0; j < rows.length; j++)
     for (let i = 0; i < rows[j].length; i++){
       const ch = rows[j][i];
@@ -1326,7 +1369,7 @@ function maleGerichtszene(ctx, s, rezept){
 
   const platz = 'gericht_' + rezept.id;
   if (bildDa(platz)){
-    maleGross(ctx, s, platz, null, mitte - 24, ty - 28, 2);
+    maleGross(ctx, s, platz, null, mitte - 24, ty - 28, 2, 30);
   } else {
     // Platzhalter: Teller mit einem Hügel in der Farbe des Rezepts.
     maleGross(ctx, s, 'teller', KOCHZEUG.teller, mitte - 28, ty - 8, 2);
@@ -1589,6 +1632,64 @@ function zeichnen(){
   maleRaum(ctx, s, new Date());
 }
 
+/* ---------- Bildchen in den Listen ----------
+   Vorrat, Kochen, Bestellen und Snacks zeigten bisher ein Farbkästchen.
+   Damit ließ sich nichts austauschen. Hier hängt jeder Eintrag an einem
+   Bildplatz: liegt dafür eine Datei in www/bilder/, wird sie gezeigt —
+   unverändert, nur mittig in das Kästchen eingepasst. Sonst der
+   gezeichnete Platzhalter, sonst ein Klecks in der Farbe des Stücks.
+
+   Eingepasst wird mit ganzen Vielfachen, solange die Datei kleiner ist
+   als das Kästchen: ein gemalter Punkt bleibt so ein Quadrat. Erst wenn
+   sie größer ist, wird verkleinert. */
+const LISTENBILD = 40;
+
+function listenBild(platz, sprite, farbe){
+  const c = h('canvas', { width: LISTENBILD, height: LISTENBILD,
+                          class: 'listenbild', 'aria-hidden': 'true' });
+  const ctx = c.getContext && c.getContext('2d');
+  if (!ctx) return h('span', { class:'farbe', style:'background:' + farbe });
+  if ('imageSmoothingEnabled' in ctx) ctx.imageSmoothingEnabled = false;
+
+  const b = BILDER[platz];
+  if (b){
+    const passt = Math.min(LISTENBILD / b.b, LISTENBILD / b.h);
+    const f = passt >= 1 ? Math.floor(passt) : passt;
+    const bb = Math.round(b.b * f), hh = Math.round(b.h * f);
+    ctx.drawImage(b.el, Math.round((LISTENBILD - bb) / 2), Math.round((LISTENBILD - hh) / 2), bb, hh);
+    return c;
+  }
+
+  const rows = sprite && (sprite.p || sprite);
+  if (rows && rows.length){
+    const zug = Math.max(1, Math.floor(LISTENBILD / Math.max(rows.length, rows[0].length)));
+    const x = Math.round((LISTENBILD - rows[0].length * zug) / 2);
+    const y = Math.round((LISTENBILD - rows.length * zug) / 2);
+    maleRaster(ctx, rows, x / zug, y / zug, zug, null);
+    return c;
+  }
+
+  /* Ohne Platzhalter ein runder Klecks statt eines Balkens: er sagt
+     „hier fehlt noch ein Bild", ohne wie ein Bedienelement auszusehen. */
+  const m = LISTENBILD / 2, r = LISTENBILD * 0.34;
+  for (let j = -r; j <= r; j++){
+    const halb = Math.round(Math.sqrt(Math.max(0, r * r - j * j)));
+    if (!halb) continue;
+    ctx.fillStyle = j < -r * 0.35 ? aufhellen(farbe) : farbe;
+    ctx.fillRect(Math.round(m - halb), Math.round(m + j), halb * 2, 1);
+  }
+  return c;
+}
+
+/* Ein Ton heller, für den Lichtrand am Klecks. */
+function aufhellen(farbe){
+  const m = /^#([0-9a-f]{6})$/i.exec(farbe || '');
+  if (!m) return farbe;
+  const n = parseInt(m[1], 16);
+  const hell = v => Math.min(255, Math.round(v + (255 - v) * 0.35));
+  return 'rgb(' + hell(n >> 16) + ',' + hell((n >> 8) & 255) + ',' + hell(n & 255) + ')';
+}
+
 function maleIcon(name){
   const c = h('canvas', { width: 44, height: 44, 'aria-hidden': 'true' });
   if (c.getContext){
@@ -1803,7 +1904,7 @@ function fensterKochen(){
           else if (state.auswahl.length < 2) state.auswahl = state.auswahl.concat(id);
           fensterKochen();
         },
-      }, z.name, h('span', { class:'farbe', style:'background:' + zutatFarbe(id) }), 'x' + da));
+      }, z.name, listenBild('zutat_' + id, KOCHZEUG['zutat_' + id], zutatFarbe(id)), 'x' + da));
     });
     blatt.appendChild(gitter);
 
@@ -1866,6 +1967,90 @@ function duscheAnteil(){
   if (!state.dusche) return 0;
   const rest = state.dusche.bis - Date.now();
   return Math.max(0, Math.min(1, 1 - rest / DUSCHE_DAUER));
+}
+
+/* ---------- Planschen ----------
+   Wie das Abbrausen eine Bewegung, kein Knopfdruck mit sofortiger
+   Wirkung: Bella schlägt mit den Händen aufs Wasser, es spritzt, und
+   erst wenn sie fertig ist, wirkt es auf ihre Werte. */
+const PLANSCH_DAUER = 1900;
+const PLANSCH_SCHLAEGE = 3;
+
+function planschStarten(){
+  state.plansch = { bis: Date.now() + PLANSCH_DAUER };
+}
+
+function planschAnteil(){
+  if (!state.plansch) return 0;
+  const rest = state.plansch.bis - Date.now();
+  return Math.max(0, Math.min(1, 1 - rest / PLANSCH_DAUER));
+}
+
+/* Die Wanne ist von oben zu sehen: die ganze Ellipse ist Wasser, und
+   Bella sitzt an ihrem oberen Rand. Die Hände gehören deshalb links und
+   rechts **neben** sie, ein Stück weiter in die Wanne hinein — nicht auf
+   die Höhe ihres Kopfes, dort wäre der Wannenrand.
+
+   `w` ist das Maß der Wanne aus wanneMasse. */
+function malePlanschen(ctx, s, w){
+  const t = planschAnteil();
+  // Drei Schläge nacheinander; `schlag` geht je Schlag von 0 bis 1.
+  const takt = t * PLANSCH_SCHLAEGE;
+  const schlag = takt % 1;
+  // Die Hände heben sich und kommen herunter: unten ist der Aufschlag.
+  const hoch = Math.sin(schlag * Math.PI) * 13;
+  const spanne = w.rx * 0.34;
+  const wasserY = w.my - w.ry * 0.42;          // im Wasser, unter Bella
+
+  /* Beim Aufschlag laufen Ringe über das Wasser und Tropfen fliegen im
+     Bogen weg. Kurz nach dem Aufschlag ist am meisten los. Die Ringe
+     liegen unter den Händen, also zuerst. */
+  const nachSchlag = schlag < 0.42 ? 0 : (schlag - 0.42) / 0.58;
+  if (nachSchlag > 0){
+    [-1, 1].forEach(seite => {
+      const hx = w.mx + seite * spanne;
+      for (let r = 0; r < 3; r++){
+        const gross = 5 + nachSchlag * 22 + r * 6;
+        if (gross > w.rx * 0.8) continue;
+        const staerke = Math.max(0, 0.7 - nachSchlag * 0.5 - r * 0.15);
+        ellipsenRing(ctx, s, hx, wasserY + 2, gross, gross * 0.4, 1.2,
+                     'rgba(255,255,255,' + staerke.toFixed(2) + ')');
+      }
+    });
+  }
+
+  /* Die Tropfen: feste Bahnen je Schlag, damit sie nicht bei jedem Bild
+     neu würfeln und flimmern. Die Wurfhöhe kommt aus der Parabel. */
+  const zufall = streuFolge('plansch' + Math.floor(takt));
+  for (let i = 0; i < 26; i++){
+    const seite = i % 2 ? 1 : -1;
+    const weite = (0.3 + zufall() * 0.7) * spanne * 1.6;
+    const hoehe = 12 + zufall() * 22;
+    const eigen = Math.min(1, nachSchlag + zufall() * 0.25);
+    if (!(eigen > 0)) continue;
+    const tx = w.mx + seite * (spanne * 0.5 + weite * eigen);
+    const ty = wasserY - hoehe * 4 * eigen * (1 - eigen);
+    if (Math.abs(tx - w.mx) > w.rx * 0.9) continue;
+    px(ctx, s, tx, ty, 1.4, 3, 'rgba(240,250,255,.95)');
+  }
+
+  // Die Hände zuletzt, damit sie vor Ringen und Tropfen liegen.
+  [-1, 1].forEach(seite => {
+    const hx = w.mx + seite * spanne;
+    const hy = wasserY - hoch;
+    ellipse(ctx, s, hx, hy, 5, 4.5, HAUT.schatten);
+    ellipse(ctx, s, hx, hy - 1, 4.2, 3.6, HAUT.flaeche);
+    ellipse(ctx, s, hx - seite * 1.2, hy - 1.6, 2.6, 2, HAUT.licht);
+    /* Der Arm, der aus Bellas Schulter dorthin führt. Dicht genug
+       gesetzt, dass daraus ein Arm wird und keine Perlenkette. */
+    const ax = w.mx + seite * 9, ay = w.my - w.ry + 14;
+    const schritte = Math.max(8, Math.round(Math.abs(hx - ax) + Math.abs(hy - ay)));
+    for (let k = 0; k <= schritte; k++){
+      const p = k / schritte;
+      ellipse(ctx, s, ax + (hx - ax) * p, ay + (hy - ay) * p, 3.4, 3,
+              p > 0.5 ? HAUT.flaeche : HAUT.schatten);
+    }
+  });
 }
 
 function maleDusche(ctx, s, mx, kopfY){
@@ -1957,7 +2142,7 @@ function fensterEinstellungen(){
 function tastenFuer(raum){
   const b = DATA.bella;
   if (state.szene) return [ taste('WEITER', szeneWeiter, 'haupt breit') ];
-  if (state.dusche || state.essen) return [ taste('…', () => {}, 'aus breit') ];
+  if (state.dusche || state.essen || state.plansch) return [ taste('…', () => {}, 'aus breit') ];
 
   const schlaeft = b.schlaeft;
   const daheim = b.ort === raum;
@@ -1993,8 +2178,14 @@ function tastenFuer(raum){
         await pflegen({ ausgeruht: b.zugedeckt ? 6 : 0, laune: b.zugedeckt ? 5 : -1,
                         sagt: b.zugedeckt ? (schlaeft ? '…' : 'Mmh, warm.') : 'Ah, Luft!' });
       }, b.zugedeckt ? '' : 'haupt') : null,
-      taste('LICHT AUS', () => pflegen({ ausgeruht: 5, laune: 2,
-        sagt: schlaeft ? '…' : 'Gute Nacht.' })),
+      /* Der Schalter schaltet wirklich: die Nische wird dunkel, nur
+         Fenster und Lichterkette bleiben stehen, und im Dunkeln erholt
+         sie sich schneller. */
+      taste(lichtAn() ? 'LICHT AUS' : 'LICHT AN', async () => {
+        DATA.raeume.schlaf.licht = !lichtAn();
+        await pflegen({ ausgeruht: lichtAn() ? 0 : 4, laune: lichtAn() ? 1 : 2,
+          sagt: schlaeft ? '…' : (lichtAn() ? 'Heller!' : 'Gute Nacht.') });
+      }, lichtAn() ? '' : 'haupt'),
     ].filter(Boolean);
   }
 
@@ -2036,7 +2227,7 @@ function tastenFuer(raum){
             await pflegen({ laune: 6, sagt: 'Kitzelt!' });
           }, 'haupt'),
       taste('BADEZUSATZ', fensterBadezusatz),
-      braucht('PLANSCHEN', () => pflegen({ laune: 8, sauber: 4, sagt: 'Platsch!' })),
+      braucht('PLANSCHEN', () => { planschStarten(); render(); }),
     ].filter(Boolean);
   }
 
@@ -2073,6 +2264,11 @@ async function zeitgesteuertes(){
     state.dusche = null;
     state.schaum = false;
     await pflegen({ sauber: 46, laune: 9, sagt: 'Blitzeblank!' });
+    return true;
+  }
+  if (state.plansch && Date.now() >= state.plansch.bis){
+    state.plansch = null;
+    await pflegen({ laune: 8, sauber: 4, sagt: 'Platsch!' });
     return true;
   }
   return false;
@@ -2130,7 +2326,7 @@ function extraFuer(raum){
   const vorrat = h('div', { class:'gitter' });
   Object.entries(ZUTATEN).forEach(([id, z]) => {
     vorrat.appendChild(h('div', { class:'stueck' + ((DATA.vorrat[id] || 0) ? '' : ' aus') },
-      h('span', { class:'farbe', style:'background:' + zutatFarbe(id) }),
+      listenBild('zutat_' + id, KOCHZEUG['zutat_' + id], zutatFarbe(id)),
       z.name, h('br'), 'x' + (DATA.vorrat[id] || 0)));
   });
   return [h('div', { class:'block', id:'vorratblock' },
@@ -2343,7 +2539,7 @@ function fensterSnacks(){
       gitter.appendChild(h('button', {
         class:'stueck', 'data-snack': id,
         onclick: () => snackEssen(id),
-      }, h('span', { class:'farbe', style:'background:' + sn.farbe }),
+      }, listenBild('snack_' + id, null, sn.farbe),
          sn.name, h('br'), 'x' + da));
     });
     if (!etwas){
@@ -2384,7 +2580,7 @@ function fensterBestellen(){
           state.bestellwahl = state.bestellwahl.concat(id);
           fensterBestellen();
         },
-      }, h('span', { class:'farbe', style:'background:' + zutatFarbe(id) }),
+      }, listenBild('zutat_' + id, KOCHZEUG['zutat_' + id], zutatFarbe(id)),
          z.name, wie ? h('br') : null, wie ? '+' + wie : null));
     });
     blatt.appendChild(gitter);
@@ -2445,8 +2641,8 @@ function navBauen(){
     nav.appendChild(h('button', {
       class:'tab', 'data-raum': r, 'aria-label': RAUMNAME[r],
       onclick: () => {
-        // Schaum bleibt nicht am Raumwechsel hängen.
-        if (state.raum === 'bad' && r !== 'bad') state.schaum = false;
+        // Schaum und Planschen bleiben nicht am Raumwechsel hängen.
+        if (state.raum === 'bad' && r !== 'bad'){ state.schaum = false; state.plansch = null; }
         state.raum = r; state.blase = null; render();
       },
     }, maleIcon(icons[r]), h('span', { text: kurz[r] })));
@@ -2459,6 +2655,7 @@ function navBauen(){
    neues Rezept nicht an zwei Stellen eingetragen werden muss. */
 function bildplaetzeAnmelden(){
   Object.keys(ZUTATEN).forEach(z => bildplatzAnlegen('zutat_' + z));
+  Object.keys(SNACKS).forEach(sn => bildplatzAnlegen('snack_' + sn));
   REZEPTE.forEach(r => bildplatzAnlegen('gericht_' + r.id));
   Object.keys(MOEBEL).forEach(m => bildplatzAnlegen('moebel_' + m));
   Object.keys(KLEINKRAM).forEach(k => bildplatzAnlegen(k));

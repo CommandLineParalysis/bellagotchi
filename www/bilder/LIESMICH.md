@@ -75,6 +75,27 @@ Die Zentimeter stehen in `www/js/massstab.js` unter `GROESSEN_CM` und
 `BREITEN_CM`. Soll etwas größer oder kleiner sein, ändert sich dort die
 Zahl, nicht die Datei.
 
+## Zutaten, Snacks und Gerichte
+
+Die stehen nicht im Zimmer, sondern in den Listen (Vorrat, Kochen,
+Bestellen, Snacks) und auf den Kochkarten. Für sie gilt die
+Zentimeter-Tabelle oben nicht — sie haben eigene Maße:
+
+| Platz | Wo | Datei sollte sein |
+|---|---|---|
+| `zutat_erdbeere`, `zutat_milch`, `zutat_mehl`, `zutat_honig`, `zutat_beere`, `zutat_ei` | Listen + Kochkarte (24 cm hoch) | **134 px hoch**, quadratisch |
+| `gericht_<rezept>` | Kochkarte (30 cm hoch) | **168 px hoch** |
+| `snack_keks`, `snack_schoki`, `snack_apfel`, `snack_brezel`, `snack_lutscher`, `snack_joghurt`, `snack_nuesse`, `snack_gummibaer` | nur die Snack-Liste | **quadratisch, 80–160 px** |
+
+In den Listen wird das Bild mittig in ein Kästchen gesetzt und nur um
+ganze Vielfache vergrößert, solange es hineinpasst — ein gemalter Punkt
+bleibt ein Quadrat. Auf der Kochkarte wird es auf seine Kartenhöhe
+gebracht, dieselbe, die auch der Platzhalter hat.
+
+Liegt keine Datei da, zeigt die Liste den gezeichneten Platzhalter; gibt
+es auch den nicht (Snacks), einen Klecks in der Farbe des Stücks. Das ist
+das Zeichen, dass dort noch ein Bild fehlt.
+
 ## Wo etwas steht
 
 Im Spiel: Stift oben rechts → **Gegenstände setzen**. Antippen wählt

@@ -29,6 +29,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'MODELL_PX_JE_CM','GROESSEN_CM','BREITEN_CM','ZIMMER','sollPunkte','massPruefen',
                      'moebelDa','MOEBELBILD','maleBellaFigur','maleBellaLiegend',
                      'SZENE_CM','szenenMasse','nischeMasse','wanneMasse',
+                     'planschStarten','planschAnteil','PLANSCH_DAUER','lichtAn',
+                     'erholungJetzt','ERHOLUNG','ERHOLUNG_HELL',
+                     'vaultPayload','persist','listenBild',
                      'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
@@ -374,6 +377,125 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     if (T.DATA.bella.sauber < 60) throw new Error('nicht sauber: ' + T.DATA.bella.sauber);
     return 'Schaum bleibt, bis die Hand fertig ist — dann sauber '
          + Math.round(T.DATA.bella.sauber);
+  });
+
+  await p.check('Planschen läuft als Bewegung, nicht auf Knopfdruck', async () => {
+    T.DATA.bella.laune = 40;
+    T.state.plansch = null;
+    T.state.schaum = false;
+    await mitBella('bad');
+    click(taste('PLANSCHEN'));
+    await wait(30);
+    if (!T.state.plansch) throw new Error('kein Planschen gestartet');
+    if (T.DATA.bella.laune > 45) throw new Error('Laune stieg sofort, ohne die Bewegung');
+    const anteil = T.planschAnteil();
+    if (!(anteil >= 0 && anteil < 1)) throw new Error('Fortschritt: ' + anteil);
+    // Währenddessen ist nichts anderes anzutippen.
+    if (taste('BADEZUSATZ')) throw new Error('andere Knöpfe bleiben bedienbar');
+    T.state.plansch.bis = Date.now() - 1;
+    await T.zeitgesteuertes();
+    await wait(25);
+    if (T.state.plansch) throw new Error('Planschen läuft weiter');
+    if (!(T.DATA.bella.laune > 45)) throw new Error('Laune blieb: ' + T.DATA.bella.laune);
+    return 'gespritzt, danach Laune ' + Math.round(T.DATA.bella.laune);
+  });
+
+  await p.check('Planschen bleibt nicht am Raumwechsel hängen', async () => {
+    await mitBella('bad');
+    click(taste('PLANSCHEN'));
+    await wait(30);
+    if (!T.state.plansch) throw new Error('kein Planschen gestartet');
+    click(tab('kueche'));
+    await wait(25);
+    if (T.state.plansch) throw new Error('Planschen in die Küche mitgenommen');
+    return 'beim Verlassen beendet';
+  });
+
+  /* --- Das Licht im Schlafzimmer --- */
+
+  await p.check('Der Lichtschalter schaltet wirklich', async () => {
+    await mitBella('schlaf');
+    T.DATA.raeume.schlaf.licht = true;
+    T.render();
+    await wait(25);
+    if (!taste('LICHT AUS')) throw new Error('kein Knopf "LICHT AUS"');
+    click(taste('LICHT AUS'));
+    await wait(30);
+    if (T.lichtAn()) throw new Error('Licht blieb an');
+    if (!taste('LICHT AN')) throw new Error('Knopf zeigt nicht "LICHT AN"');
+    click(taste('LICHT AN'));
+    await wait(30);
+    if (!T.lichtAn()) throw new Error('Licht ging nicht wieder an');
+    return 'aus ⇄ an, der Knopf folgt';
+  });
+
+  await p.check('Im Dunkeln erholt sie sich schneller', () => {
+    T.DATA.raeume.schlaf.licht = true;
+    const hell = T.erholungJetzt();
+    T.DATA.raeume.schlaf.licht = false;
+    const dunkel = T.erholungJetzt();
+    if (!(dunkel > hell)) throw new Error('hell ' + hell + ', dunkel ' + dunkel);
+    // Der Unterschied muss sich auch im fortgeschriebenen Wert zeigen.
+    const messen = () => {
+      T.DATA.bella.ausgeruht = 40;
+      T.DATA.stand = new Date(Date.now() - 6 * 3600000).toISOString();
+      T.standFortschreiben(new Date());
+      return T.DATA.bella.ausgeruht;
+    };
+    T.DATA.raeume.schlaf.licht = false;
+    const wertDunkel = messen();
+    T.DATA.raeume.schlaf.licht = true;
+    const wertHell = messen();
+    if (!(wertDunkel >= wertHell))
+      throw new Error('dunkel ' + wertDunkel.toFixed(0) + ', hell ' + wertHell.toFixed(0));
+    return dunkel + ' statt ' + hell + ' je Stunde Schlaf';
+  });
+
+  await p.check('Der Lichtstand überlebt das Laden', async () => {
+    T.DATA.raeume.schlaf.licht = false;
+    await T.persist();
+    const geladen = T.adoptVault(T.vaultPayload());
+    if (geladen.raeume.schlaf.licht !== false)
+      throw new Error('Licht kam als ' + geladen.raeume.schlaf.licht + ' zurück');
+    T.DATA.raeume.schlaf.licht = true;
+    await T.persist();
+    return 'aus bleibt aus';
+  });
+
+  /* --- Bildplätze für Vorrat und Snacks --- */
+
+  await p.check('Jede Zutat und jeder Snack hat einen Bildplatz', () => {
+    const fehlt = [];
+    Object.keys(T.ZUTATEN).forEach(z => { if (!('zutat_' + z in T.BILDPLAETZE)) fehlt.push('zutat_' + z); });
+    Object.keys(T.SNACKS).forEach(s => { if (!('snack_' + s in T.BILDPLAETZE)) fehlt.push('snack_' + s); });
+    if (fehlt.length) throw new Error('ohne Platz: ' + fehlt.join(', '));
+    return Object.keys(T.ZUTATEN).length + ' Zutaten, ' + Object.keys(T.SNACKS).length + ' Snacks';
+  });
+
+  await p.check('In den Listen steht ein Bild, kein Farbkästchen', async () => {
+    await mitBella('kueche');
+    const mitBild = w => {
+      const kacheln = $$(w + ' .stueck');
+      if (!kacheln.length) throw new Error('keine Kacheln in ' + w);
+      const ohne = kacheln.filter(k => !k.querySelector('canvas.listenbild'));
+      if (ohne.length) throw new Error(w + ': ' + ohne.length + ' ohne Bild');
+      return kacheln.length;
+    };
+    const vorrat = mitBild('#vorratblock');
+    click(taste('KOCHEN'));
+    await wait(30);
+    const kochen = mitBild('#zutaten');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    T.DATA.snacks[Object.keys(T.SNACKS)[0]] = 2;
+    T.render();
+    await wait(20);
+    click($$('#tasten .taste').find(t => t.textContent.startsWith('SNACK')));
+    await wait(30);
+    const snacks = mitBild('#snackgitter');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    return vorrat + ' im Vorrat, ' + kochen + ' beim Kochen, ' + snacks + ' Snacks';
   });
 
   /* --- Bella ist nur an einem Ort --- */
