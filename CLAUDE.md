@@ -34,7 +34,15 @@ Zimmer mit Wand, Boden und Möbeln.
 ## Eigene Pixelgrafiken
 
 **Jede Grafik ist austauschbar.** In `www/js/bilder.js` steht unter
-`BILDPLAETZE` für jedes Bild ein Platz. Trägt man dort eine Datei aus
+`BILDPLAETZE` für jedes Bild ein Platz.
+
+**Zwei Auflösungen nebeneinander:** eine gelieferte Datei wird 1:1
+gezeichnet — ein gemalter Punkt ist ein Bildpunkt. Meine Platzhalter
+sind grob und werden dreifach gesetzt (`GROB = 3`). Deshalb muss keine
+gelieferte Datei verkleinert werden; die erste Pflanze kam mit 120 × 140
+Punkten und wäre bei der alten Auflösung so breit gewesen wie die ganze
+Küche. Stellen werden im groben Raster angegeben, Größen in der
+Auflösung der Datei — siehe `maleBild` und `bildMasse`. Trägt man dort eine Datei aus
 `www/bilder/` ein, wird sie **unverändert** gezeichnet: keine Palette,
 kein Umfärben, kein Zuschnitt, keine Glättung, nur ganze Vielfache der
 Kantenlänge. Die gezeichneten Sprites in `sprites.js` sind Platzhalter,
@@ -92,6 +100,19 @@ darüber, ihre Punkte stehen in `ANKER` als Anteil der Bühne.
 - **Der Takt läuft alle 200 ms**, nicht mehr jede Sekunde — sonst
   ruckelten Essensbewegung und Dusche. Die Werte werden weiter nur
   einmal je Minute fortgeschrieben.
+- **Bella ist immer nur an einem Ort** (`DATA.bella.ort`). In jedem
+  anderen Zimmer steht statt der Pflegeknöpfe der Ruf-Knopf; schläft
+  sie, kommt sie nicht. Was sie nicht braucht — kochen, bestellen,
+  einrichten, Badezusatz — geht auch ohne sie.
+- **Kopf und Körper sind getrennt** (`FRISUREN`, `KLEIDUNG`), damit eine
+  neue Frisur kein zweites Kleid kostet. Die Haarfarbe steht fest
+  (`HAARFARBE`); wählbar ist die Frisur, nicht ihre Farbe.
+- **Nachts liegt sie nicht jeden Tag gleich.** `schlaflage()` hängt am
+  Kalendertag, nicht am Zufall — sonst zappelte sie im Bett. Die frühen
+  Stunden zählen zum Vorabend, damit sie sich nicht um drei umdreht.
+- **Gekocht wird auf Karten, gegessen im Zimmer.** Nur das Kochen
+  bekommt die eigene Ansicht (zwei Karten); danach isst sie in der
+  Küche, wo man sie sieht, und erst dann zählt das Gericht.
 - **`window.BELLAGOTCHI_VORSCHAU`** schaltet alles frei. Die Marke setzt
   nur die Vorschau im Chat, nie die Handy-App.
 - **Nachts wird mit Rasterpunkten *und* halber Deckkraft gedeckt.** Nur

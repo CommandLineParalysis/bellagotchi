@@ -39,6 +39,9 @@ const BILDPLAETZE = {
   // Handzeug
   hand_dusche:    '',
   schwamm:        '',
+
+  // Erste gelieferte Grafik: die Pflanze in der Küche.
+  deko_pflanze:   'bilder/deko_pflanze.png',
 };
 
 /* Gerichte und Zutaten bekommen ihre Plätze aus den Listen im Spiel,
@@ -58,6 +61,10 @@ function bilderLaden(){
   return Promise.all(offen.map(([name, datei]) => new Promise(fertig => {
     const el = new Image();
     el.onload = () => {
+      /* Auch ein leeres Bild meldet sich als geladen — dann stünde eine
+         Fläche von 0 × 0 im Weg und der Platzhalter käme nicht mehr
+         zum Zug. Deshalb zählt nur, was wirklich Maße hat. */
+      if (!(el.naturalWidth > 0 && el.naturalHeight > 0)) return fertig(false);
       BILDER[name] = { el, b: el.naturalWidth, h: el.naturalHeight };
       bilderGeladen++;
       fertig(true);
@@ -75,9 +82,20 @@ function bildDa(name){ return !!BILDER[name]; }
 function maleBild(ctx, s, name, x, y){
   const b = BILDER[name];
   if (!b) return false;
+  /* Die Stelle wird im groben Raster angegeben, gezeichnet wird die
+     Datei aber in ihrer eigenen Auflösung — ein gemalter Punkt bleibt
+     ein Bildpunkt. Deshalb die Lage mal `mass`, die Größe mal `fein`. */
   ctx.drawImage(b.el, Math.round(x) * s.mass, Math.round(y) * s.mass,
-                b.b * s.mass, b.h * s.mass);
+                b.b * s.fein, b.h * s.fein);
   return true;
+}
+
+/* Wie breit und hoch eine gelieferte Datei im groben Raster ist —
+   damit sich Platzhalter und Datei an derselben Stelle ausrichten. */
+function bildMasse(s, name){
+  const b = BILDER[name];
+  if (!b) return null;
+  return { b: Math.round(b.b * s.fein / s.mass), h: Math.round(b.h * s.fein / s.mass) };
 }
 
 /* Ein Szenenbild füllt die Bühne. Es wird mittig gesetzt und nur um
@@ -86,10 +104,11 @@ function maleBild(ctx, s, name, x, y){
 function maleSzenenbild(ctx, s, name){
   const b = BILDER[name];
   if (!b) return false;
-  const faktor = Math.max(1, Math.min(Math.floor(s.b / b.b), Math.floor(s.h / b.h)));
-  const bp = b.b * faktor * s.mass, hp = b.h * faktor * s.mass;
-  const x = Math.round((s.b * s.mass - bp) / 2);
-  const y = Math.round((s.h * s.mass - hp) / 2);
+  const bpGesamt = s.b * s.mass, hpGesamt = s.h * s.mass;
+  const faktor = Math.max(1, Math.min(Math.floor(bpGesamt / b.b), Math.floor(hpGesamt / b.h)));
+  const bp = b.b * faktor, hp = b.h * faktor;
+  const x = Math.round((bpGesamt - bp) / 2);
+  const y = Math.round((hpGesamt - hp) / 2);
   ctx.drawImage(b.el, x, y, bp, hp);
   return true;
 }

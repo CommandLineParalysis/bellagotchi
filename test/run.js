@@ -22,8 +22,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'szeneWeiter','kochszenePhase','zeitgesteuertes','duscheAnteil',
                      'KOCHSCHRITTE','BILDPLAETZE','bildDa','DUSCHE_DAUER',
                      'SNACKS','snacksDa','snackEssen','TAGESMENGE','bestellRest',
-                     'heuteSchluessel','bestellungVermerken','HAARE','WANDFARBEN',
-                     'BODENFARBEN','alleGaben']);
+                     'heuteSchluessel','bestellungVermerken','WANDFARBEN',
+                     'BODENFARBEN','alleGaben','KLEIDUNG','FRISUREN','HAARFARBE',
+                     'SCHLAFLAGEN','schlaflage','rufKnopf','ESSEN_DAUER','bellaRaster',
+                     'KOPF_H','KOERPER_H']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -31,6 +33,12 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     for (let i = 0; i < T.KOCHSCHRITTE.length + 1 && T.state.szene; i++){
       await T.szeneWeiter();
       await wait(20);
+    }
+    // Danach isst sie in der Küche; auch das wird vorgespult.
+    if (T.state.essen){
+      T.state.essen.bis = Date.now() - 1;
+      await T.zeitgesteuertes();
+      await wait(25);
     }
   };
   const duscheDurchlaufen = async () => {
@@ -42,6 +50,16 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   const tab = r => $$('#nav .tab').find(t => t.dataset.raum === r);
   const taste = text => $$('#tasten .taste').find(t => t.textContent === text);
+
+  /* Bella ist immer nur an einem Ort. Für Prüfungen, in denen es nicht
+     um das Rufen geht, wird sie kurzerhand mitgenommen. */
+  const mitBella = async raum => {
+    click(tab(raum));
+    T.DATA.bella.ort = raum;
+    T.DATA.bella.schlaeft = false;
+    T.render();
+    await wait(25);
+  };
 
   /* --- Rahmen --- */
 
@@ -131,15 +149,13 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   });
 
   await p.check('Nach der Pause ist sie schnell wieder obenauf', async () => {
-    click(tab('bad'));
-    await wait(20);
+    await mitBella('bad');
     click(taste('EINSCHÄUMEN'));
     await wait(30);
     click(taste('ABBRAUSEN'));
     await wait(30);
     await duscheDurchlaufen();
-    click(tab('wohnen'));
-    await wait(20);
+    await mitBella('wohnen');
     click(taste('MUSIK HÖREN'));
     await wait(30);
     if (T.DATA.bella.sauber < 50) throw new Error('Baden half nicht: ' + T.DATA.bella.sauber);
@@ -154,8 +170,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.bella.schlaeft = false;
     T.DATA.bella.satt = 30;
     T.DATA.vorrat.mehl = 2; T.DATA.vorrat.ei = 2;
-    click(tab('kueche'));
-    await wait(20);
+    await mitBella('kueche');
     click(taste('KOCHEN'));
     await wait(25);
     click($$('#zutaten .stueck').find(b => b.dataset.zutat === 'mehl'));
@@ -196,9 +211,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     return 'alle abgeblendet';
   });
 
-  await p.check('Kochen zeigt drei Bilder nacheinander', async () => {
+  await p.check('Gekocht wird auf Karten, gegessen in der Küche', async () => {
     T.DATA.vorrat.honig = 2; T.DATA.vorrat.milch = 2;
     T.DATA.bella.satt = 30;
+    await mitBella('kueche');
     click(taste('KOCHEN'));
     await wait(25);
     click($$('#zutaten .stueck').find(b => b.dataset.zutat === 'honig'));
@@ -216,19 +232,26 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
       await T.szeneWeiter();
       await wait(20);
     }
-    if (gesehen.join(',') !== 'zutaten,gericht,essen')
-      throw new Error('Reihenfolge: ' + gesehen.join(','));
-    if (T.state.szene) throw new Error('Szene läuft weiter');
+    if (gesehen.join(',') !== 'zutaten,gericht')
+      throw new Error('Karten: ' + gesehen.join(','));
+    // Danach ist die Ansicht weg und sie isst dort, wo sie steht.
+    if (T.state.szene) throw new Error('die Ansicht bleibt offen');
+    if (!T.state.essen) throw new Error('sie isst nicht');
+    if (T.state.raum !== 'kueche') throw new Error('gegessen wird in: ' + T.state.raum);
+    if (T.DATA.bella.ort !== 'kueche') throw new Error('Bella ist woanders');
+    if (T.DATA.bella.satt > 30) throw new Error('satt, bevor sie fertig ist');
+    T.state.essen.bis = Date.now() - 1;
+    await T.zeitgesteuertes();
+    await wait(25);
     if (T.DATA.bella.satt <= 30) throw new Error('am Ende nicht satt');
-    return gesehen.join(' → ');
+    return 'zwei Karten, dann Essen in der Küche';
   });
 
   /* --- Reden --- */
 
   await p.check('Reden hebt die Laune', async () => {
     T.DATA.bella.laune = 40;
-    click(tab('wohnen'));
-    await wait(20);
+    await mitBella('wohnen');
     click(taste('REDEN'));
     await wait(25);
     const antwort = $$('#modalblatt .taste')[0];
@@ -242,19 +265,18 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   /* --- Anziehen und Einrichten --- */
 
-  await p.check('Kleid wechseln steckt hinter dem Anziehen-Knopf', async () => {
-    click(tab('schrank'));
-    await wait(20);
+  await p.check('Kleidung wechseln steckt hinter dem Anziehen-Knopf', async () => {
+    await mitBella('schrank');
     if ($$('#extra .stueck').length) throw new Error('Kleiderwahl steht offen unter dem Raum');
     click(taste('ANZIEHEN'));
     await wait(30);
-    const anders = T.DATA.besitz.kleider.find(k => k !== T.DATA.outfit.kleid);
+    const anders = T.DATA.besitz.stuecke.find(k => k !== T.DATA.outfit.stueck);
     click($$('#modalblatt .stueck').find(b => b.dataset.wahl === anders));
     await wait(40);
-    if (T.DATA.outfit.kleid !== anders) throw new Error('Outfit: ' + T.DATA.outfit.kleid);
+    if (T.DATA.outfit.stueck !== anders) throw new Error('Outfit: ' + T.DATA.outfit.stueck);
     click($('#modalblatt .schliessen'));
     await wait(20);
-    return T.KLEIDER[anders].name;
+    return T.KLEIDUNG[anders].name;
   });
 
   await p.check('Einrichten steckt hinter dem Stift und gilt je Raum', async () => {
@@ -265,8 +287,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
       const offen = $$('#extra .stueck').filter(b => b.dataset.wahl);
       if (offen.length) throw new Error('Farbtafel offen in ' + r);
     }
-    click(tab('schrank'));
-    await wait(20);
+    await mitBella('schrank');
     const vorher = T.DATA.raeume.schlaf.wand;
     click($('#einrichtenbtn'));
     await wait(30);
@@ -283,10 +304,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   /* --- Bad --- */
 
   await p.check('Gebadet wird in zwei Schritten, und sonst gar nicht', async () => {
-    T.DATA.bella.schlaeft = false;
     T.DATA.bella.sauber = 20;
-    click(tab('bad'));
-    await wait(25);
+    await mitBella('bad');
     const namen = $$('#tasten .taste').map(t => t.textContent);
     if (namen.some(n => /ZÄHNE|HAARE/.test(n))) throw new Error('andere Waschart: ' + namen.join(','));
     if (!namen.includes('EINSCHÄUMEN')) throw new Error('kein Einschäumen: ' + namen.join(','));
@@ -305,6 +324,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   });
 
   await p.check('Der Schaum bleibt nicht am Raumwechsel hängen', async () => {
+    await mitBella('bad');
     click(taste('EINSCHÄUMEN'));
     await wait(30);
     if (!T.state.schaum) throw new Error('kein Schaum');
@@ -316,8 +336,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   await p.check('Der Badezusatz färbt Wasser und Blasen', async () => {
     T.DATA.besitz.zusaetze = Object.keys(T.BADEZUSAETZE);
-    click(tab('bad'));
-    await wait(25);
+    await mitBella('bad');
     click(taste('BADEZUSATZ'));
     await wait(30);
     const anders = Object.keys(T.BADEZUSAETZE).find(z => z !== T.DATA.bad.zusatz);
@@ -335,8 +354,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.bella.sauber = 20;
     T.state.schaum = false;
     T.state.dusche = null;
-    click(tab('bad'));
-    await wait(25);
+    await mitBella('bad');
     click(taste('EINSCHÄUMEN'));
     await wait(30);
     click(taste('ABBRAUSEN'));
@@ -354,6 +372,127 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
          + Math.round(T.DATA.bella.sauber);
   });
 
+  /* --- Bella ist nur an einem Ort --- */
+
+  await p.check('Bella steht immer nur in einem Zimmer', async () => {
+    T.DATA.bella.schlaeft = false;
+    T.DATA.bella.ort = 'wohnen';
+    for (const r of ['schlaf','kueche','wohnen','bad','schrank']){
+      click(tab(r));
+      await wait(20);
+      const hier = T.DATA.bella.ort === r;
+      const ruf = $$('#tasten .taste').find(t => t.textContent === 'RUFEN');
+      if (hier && ruf) throw new Error('Ruf-Knopf, obwohl sie da ist (' + r + ')');
+      if (!hier && !ruf) throw new Error('kein Ruf-Knopf, obwohl sie fehlt (' + r + ')');
+    }
+    return 'sie ist in ' + T.DATA.bella.ort + ', überall sonst steht der Ruf-Knopf';
+  });
+
+  await p.check('Rufen holt sie in das Zimmer, in dem man steht', async () => {
+    T.DATA.bella.ort = 'wohnen';
+    click(tab('bad'));
+    await wait(25);
+    click($$('#tasten .taste').find(t => t.textContent === 'RUFEN'));
+    await wait(40);
+    if (T.DATA.bella.ort !== 'bad') throw new Error('sie blieb in ' + T.DATA.bella.ort);
+    if ($$('#tasten .taste').some(t => t.textContent === 'RUFEN'))
+      throw new Error('der Ruf-Knopf steht noch da');
+    return 'wohnen → bad';
+  });
+
+  await p.check('Wer schläft, kommt nicht', async () => {
+    T.DATA.bella.ort = 'schlaf';
+    T.DATA.bella.schlaeft = true;
+    click(tab('kueche'));
+    await wait(25);
+    const ruf = $$('#tasten .taste').find(t => t.textContent === 'RUFEN');
+    if (!ruf) throw new Error('kein Ruf-Knopf');
+    if (!ruf.classList.contains('aus')) throw new Error('der Knopf sieht bedienbar aus');
+    click(ruf);
+    await wait(30);
+    if (T.DATA.bella.ort !== 'schlaf') throw new Error('sie kam trotzdem');
+    T.DATA.bella.schlaeft = false;
+    return 'sie bleibt im Bett';
+  });
+
+  await p.check('Ohne sie geht nur, was sie nicht braucht', async () => {
+    T.DATA.bella.ort = 'schlaf';
+    click(tab('bad'));
+    await wait(25);
+    const knopf = t => $$('#tasten .taste').find(x => x.textContent === t);
+    if (!knopf('EINSCHÄUMEN').classList.contains('aus'))
+      throw new Error('einschäumen ohne Bella möglich');
+    // Der Badezusatz hängt nicht an ihr — der bleibt bedienbar.
+    if (knopf('BADEZUSATZ').classList.contains('aus'))
+      throw new Error('Badezusatz gesperrt, obwohl er ohne sie geht');
+    click(tab('kueche'));
+    await wait(25);
+    if (knopf('KOCHEN').classList.contains('aus'))
+      throw new Error('Kochen gesperrt, obwohl es ohne sie geht');
+    return 'Pflege braucht sie, Einrichten und Kochen nicht';
+  });
+
+  /* --- Nachts im Bett --- */
+
+  await p.check('Nachts liegt sie nicht jeden Tag gleich', () => {
+    const lagen = new Set();
+    for (let i = 0; i < 40; i++){
+      const d = new Date(2026, 0, 1 + i, 3, 0);
+      lagen.add(JSON.stringify(T.schlaflage(d)));
+    }
+    if (lagen.size < 3) throw new Error('nur ' + lagen.size + ' verschiedene Haltungen');
+    // Aber innerhalb einer Nacht bleibt sie liegen, wie sie liegt.
+    const abends = T.schlaflage(new Date(2026, 0, 5, 23, 30));
+    const nachts = T.schlaflage(new Date(2026, 0, 6, 3, 0));
+    const morgens = T.schlaflage(new Date(2026, 0, 6, 9, 0));
+    if (JSON.stringify(abends) !== JSON.stringify(nachts)
+     || JSON.stringify(nachts) !== JSON.stringify(morgens))
+      throw new Error('sie dreht sich mitten in der Nacht');
+    return lagen.size + ' von ' + T.SCHLAFLAGEN.length + ' Haltungen, je Nacht dieselbe';
+  });
+
+  /* --- Frisur und Kleidung --- */
+
+  await p.check('Die Haarfarbe steht fest, die Frisur nicht', async () => {
+    await mitBella('schrank');
+    click(taste('ANZIEHEN'));
+    await wait(30);
+    const koepfe = $$('#modalblatt .blockkopf').map(k => k.textContent);
+    if (koepfe.some(k => /HAARFARBE|^HAARE$/.test(k)))
+      throw new Error('die Haarfarbe steht zur Wahl: ' + koepfe.join(', '));
+    if (!koepfe.includes('FRISUR')) throw new Error('keine Frisurwahl: ' + koepfe.join(', '));
+    const andere = T.DATA.besitz.frisuren.find(f => f !== T.DATA.outfit.frisur);
+    click($$('#modalblatt .stueck').find(b => b.dataset.wahl === andere));
+    await wait(40);
+    if (T.DATA.outfit.frisur !== andere) throw new Error('Frisur: ' + T.DATA.outfit.frisur);
+    // Die Haarfarbe ist überall dieselbe.
+    const plaetze = T.outfitPlaetze ? null : null;
+    if (T.HAARFARBE.length !== 3) throw new Error('keine feste Haarfarbe');
+    click($('#modalblatt .schliessen'));
+    await wait(20);
+    return 'Frisur ' + T.FRISUREN[andere].name + ', Haarfarbe unverändert';
+  });
+
+  await p.check('Kleidungsstücke sind verschiedene Bilder, nicht nur Farben', () => {
+    const namen = Object.keys(T.KLEIDUNG);
+    if (namen.length < 3) throw new Error('nur ' + namen.length + ' Stücke');
+    // Zwei Stücke dürfen nicht dasselbe Raster haben.
+    const raster = namen.map(n => T.KLEIDUNG[n].p.join('|'));
+    if (new Set(raster).size !== raster.length) throw new Error('zwei Stücke sehen gleich aus');
+    // Kopf und Körper passen zusammen.
+    const vorher = T.DATA.outfit.stueck;
+    T.DATA.outfit.stueck = namen[0];
+    const a = T.bellaRaster();
+    T.DATA.outfit.stueck = namen[1];
+    const b2 = T.bellaRaster();
+    if (a.length !== T.KOPF_H + T.KOERPER_H) throw new Error('Figur ist ' + a.length + ' Zeilen hoch');
+    if (a.join('|') === b2.join('|')) throw new Error('das Stück ändert nichts an der Figur');
+    if (a.slice(0, T.KOPF_H).join('|') !== b2.slice(0, T.KOPF_H).join('|'))
+      throw new Error('das Kleidungsstück ändert auch den Kopf');
+    T.DATA.outfit.stueck = vorher;
+    return namen.length + ' Stücke, ' + Object.keys(T.FRISUREN).length + ' Frisuren';
+  });
+
   /* --- Eigene Grafiken --- */
 
   await p.check('Jede Grafik hat einen Platz zum Austauschen', () => {
@@ -368,18 +507,26 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     return Object.keys(T.BILDPLAETZE).length + ' Plätze';
   });
 
-  await p.check('Ohne gelieferte Datei wird der Platzhalter gezeichnet', () => {
+  await p.check('Belegt ist genau, wofür eine Datei eingetragen ist', () => {
+    /* jsdom lädt keine echten Bilder, meldet aber jedes angeforderte als
+       geladen — mit erfundenen 1200×900. Prüfbar ist hier deshalb nur:
+       belegt ist genau das, wofür eine Datei eingetragen wurde, alles
+       andere fällt auf den Platzhalter zurück, und nichts bricht. Die
+       echten Maße prüft die Browser-Gegenprobe. */
+    const eingetragen = Object.entries(T.BILDPLAETZE).filter(([, d]) => d).map(([n]) => n);
     const belegt = Object.keys(T.BILDPLAETZE).filter(n => T.bildDa(n));
-    if (belegt.length) throw new Error('unerwartet geladen: ' + belegt.join(', '));
+    const zuviel = belegt.filter(n => !eingetragen.includes(n));
+    if (zuviel.length) throw new Error('belegt ohne Eintrag: ' + zuviel.join(', '));
+    if (!eingetragen.includes('deko_pflanze')) throw new Error('die Pflanze ist nicht eingetragen');
     if (errors.length) throw new Error('Fehler beim Zeichnen: ' + errors[0]);
-    return 'alle Plätze frei, nichts bricht';
+    return eingetragen.length + ' von ' + Object.keys(T.BILDPLAETZE).length
+         + ' Plätzen belegt, der Rest Platzhalter';
   });
 
   /* --- Schlafnische --- */
 
   await p.check('Zudecken schaltet einen sichtbaren Zustand', async () => {
-    click(tab('schlaf'));
-    await wait(25);
+    await mitBella('schlaf');
     T.DATA.bella.zugedeckt = false;
     T.render();
     await wait(20);
@@ -399,8 +546,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.bestellung = null;
     T.DATA.bestelltHeute = { tag:'', anzahl:0 };
     T.DATA.vorrat.honig = 0;
-    click(tab('kueche'));
-    await wait(25);
+    await mitBella('kueche');
     click(taste('BESTELLEN'));
     await wait(30);
     click($$('#bestellgitter .stueck').find(b => b.dataset.bestell === 'honig'));
@@ -474,8 +620,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     Object.keys(T.SNACKS).forEach(k => { T.DATA.snacks[k] = 0; });
     T.DATA.snacks.schoki = 2;
     T.DATA.bella.satt = 40;
-    T.render();
-    await wait(25);
+    await mitBella('kueche');
     // Snacks tauchen nicht als Zutat und nicht als Rezept auf.
     if (T.ZUTATEN.schoki) throw new Error('Snack steht unter den Zutaten');
     if (T.REZEPTE.some(r => r.aus.includes('schoki'))) throw new Error('Snack in einem Rezept');
@@ -493,8 +638,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   await p.check('Ohne Snacks bleibt der Knopf abgeblendet', async () => {
     Object.keys(T.SNACKS).forEach(k => { T.DATA.snacks[k] = 0; });
-    T.render();
-    await wait(25);
+    await mitBella('kueche');
     const knopf = $$('#tasten .taste').find(t => /^SNACK/.test(t.textContent));
     if (!knopf.classList.contains('aus')) throw new Error('Knopf sieht bedienbar aus');
     click(knopf);
@@ -509,7 +653,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     b.satt = 90; b.sauber = 90; b.ausgeruht = 90; b.laune = 90;
     // Alles freigeschaltet: dann kann die Post nur noch Snacks bringen.
     T.DATA.besitz.kleider = Object.keys(T.KLEIDER);
-    T.DATA.besitz.haare = Object.keys(T.HAARE);
+    T.DATA.besitz.stuecke = Object.keys(T.KLEIDUNG);
+    T.DATA.besitz.frisuren = Object.keys(T.FRISUREN);
     T.DATA.besitz.waende = Object.keys(T.WANDFARBEN);
     T.DATA.besitz.boeden = Object.keys(T.BODENFARBEN);
     T.DATA.besitz.bett = Object.keys(T.BETTZEUG);
@@ -535,7 +680,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     await wait(20);
     // Für die folgenden Prüfungen wieder etwas zum Freischalten lassen.
     T.DATA.besitz.kleider = ['rosenrot'];
-    T.DATA.besitz.haare = ['beere'];
+    T.DATA.besitz.stuecke = ['kleid'];
+    T.DATA.besitz.frisuren = ['lang'];
     T.DATA.besitz.waende = ['flieder'];
     T.DATA.besitz.boeden = ['eiche'];
     T.DATA.besitz.bett = ['kissen_a'];
@@ -561,11 +707,16 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   await p.check('Ausgepackt landet das Geschenk im Besitz', async () => {
     // Snacks kommen auch, deshalb so lange nachlegen, bis ein
     // Sammelstück dabei ist.
-    for (let i = 0; i < 12 && !T.DATA.post.some(g => /kleid|wand|haar|boden/.test(g.art)); i++)
+    // Der Briefkasten fasst nur drei Sendungen; kommen lauter Snacke,
+    // muss er zwischendurch geleert werden.
+    for (let i = 0; i < 20 && !T.DATA.post.some(g => /kleid|wand|stueck|frisur|boden/.test(g.art)); i++){
+      T.DATA.post.length = 0;
       T.postPruefen(48 * 60);
-    const gabe = T.DATA.post.find(g => /^(kleid|wand|haar|boden)$/.test(g.art));
+    }
+    const gabe = T.DATA.post.find(g => /^(kleid|wand|stueck|frisur|boden)$/.test(g.art));
     if (!gabe) throw new Error('kein Sammelstück in der Post');
-    const topf = { kleid:'kleider', haar:'haare', wand:'waende', boden:'boeden' }[gabe.art];
+    const topf = { kleid:'kleider', stueck:'stuecke', frisur:'frisuren',
+                   wand:'waende', boden:'boeden' }[gabe.art];
     const i = T.DATA.post.indexOf(gabe);
     click($('#postbtn'));
     await wait(25);
@@ -582,11 +733,11 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   await p.check('Alles überlebt das Laden', () => {
     const v = T.adoptVault({
       bella: { name:'Mia', satt:55, sauber:61, ausgeruht:40, laune:72, schlaeft:true },
-      outfit: { kleid:'minzgruen', haar:'mint' },
+      outfit: { stueck:'latzhose', farbe:'minzgruen', frisur:'zopf' },
       zeiten: { einschlafen:'01:00', aufwachen:'09:15' },
       vorrat: { erdbeere: 5 },
       kochbuch: ['shake','gibtsnicht'],
-      besitz: { kleider:['minzgruen'], haare:['mint'] },
+      besitz: { kleider:['minzgruen'], stuecke:['latzhose'], frisuren:['zopf'] },
     });
     if (v.bella.name !== 'Mia') throw new Error('Name: ' + v.bella.name);
     if (v.bella.satt !== 55) throw new Error('Satt: ' + v.bella.satt);
@@ -599,24 +750,27 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
   await p.check('Unsinn im Bestand wird auf gültige Werte gebracht', () => {
     const v = T.adoptVault({
       bella: { name:'', satt:'viel', laune:-40, ausgeruht:9999 },
-      outfit: { kleid:'tarnfarbe', haar:'neon' },
+      outfit: { stueck:'tarnanzug', farbe:'tarnfarbe', frisur:'neon' },
       zeiten: { einschlafen:'25:99', aufwachen:'morgens' },
       besitz: { kleider:['gibtsnicht'] },
     });
     if (v.bella.name !== 'Bella') throw new Error('Name: ' + v.bella.name);
     if (v.bella.laune !== 0) throw new Error('Laune: ' + v.bella.laune);
     if (v.bella.ausgeruht !== 100) throw new Error('Ausgeruht: ' + v.bella.ausgeruht);
-    if (v.outfit.kleid !== 'rosenrot') throw new Error('Kleid: ' + v.outfit.kleid);
+    if (v.outfit.stueck !== 'kleid') throw new Error('Stück: ' + v.outfit.stueck);
+    if (v.outfit.farbe !== 'rosenrot') throw new Error('Stoff: ' + v.outfit.farbe);
+    if (v.outfit.frisur !== 'lang') throw new Error('Frisur: ' + v.outfit.frisur);
     if (v.zeiten.einschlafen !== '02:30') throw new Error('Zeit: ' + v.zeiten.einschlafen);
     if (!v.besitz.kleider.includes('rosenrot')) throw new Error('Besitz leer');
     return 'alles auf gültige Werte';
   });
 
   await p.check('Was man trägt, besitzt man auch', () => {
-    const v = T.adoptVault({ outfit:{ kleid:'lavendel', haar:'nacht' },
-                             besitz:{ kleider:['rosenrot'], haare:['beere'] } });
-    if (!v.besitz.kleider.includes('lavendel')) throw new Error('Kleid fehlt im Besitz');
-    if (!v.besitz.haare.includes('nacht')) throw new Error('Haare fehlen im Besitz');
+    const v = T.adoptVault({ outfit:{ stueck:'pulli', farbe:'lavendel', frisur:'locken' },
+                             besitz:{ kleider:['rosenrot'], stuecke:['kleid'], frisuren:['lang'] } });
+    if (!v.besitz.kleider.includes('lavendel')) throw new Error('Stoff fehlt im Besitz');
+    if (!v.besitz.stuecke.includes('pulli')) throw new Error('Kleidungsstück fehlt im Besitz');
+    if (!v.besitz.frisuren.includes('locken')) throw new Error('Frisur fehlt im Besitz');
     return 'nachgetragen';
   });
 

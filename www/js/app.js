@@ -26,10 +26,11 @@ function leererVault(){
       geboren: jetzt,
       satt: 75, sauber: 80, ausgeruht: 70, laune: 80,
       schlaeft: false, zugedeckt: false,
+      ort: 'schlaf',            // sie ist immer nur an einem Ort
     },
     bad: { zusatz: 'klar' },
     bestellung: null,
-    outfit: { kleid: 'rosenrot', haar: 'beere' },
+    outfit: { stueck: 'kleid', farbe: 'rosenrot', frisur: 'lang' },
     zeiten: { einschlafen: '02:30', aufwachen: '10:30' },
     raeume: {
       schlaf:  { wand:'flieder', wandmuster:'wand_punkte',   boden:'eiche', bodenmuster:'boden_diele',
@@ -43,7 +44,8 @@ function leererVault(){
     besitz: { kleider: ['rosenrot', 'himmelblau'], haare: ['beere', 'honig'],
               waende: ['flieder','butter','minze','himmel','rosa'],
               boeden: ['eiche','perle','beere'],
-              bett: ['kissen_a'], bad: [], zusaetze: ['klar'] },
+              bett: ['kissen_a'], bad: [], zusaetze: ['klar'],
+              stuecke: ['kleid', 'schlafanzug'], frisuren: ['lang', 'kurz'] },
     vorrat: { erdbeere: 3, milch: 2, mehl: 2, honig: 1, beere: 2, ei: 2 },
     snacks: { keks: 2, apfel: 1 },
     bestelltHeute: { tag: '', anzahl: 0 },
@@ -69,6 +71,7 @@ const state = {
   schaum: false,      // Bella ist eingeschäumt und noch nicht abgebraust
   bestellwahl: [],    // was gerade in den Bestellkorb gelegt wurde
   szene: null,        // läuft gerade eine Kochszene?
+  essen: null,        // isst Bella gerade in der Küche?
   dusche: null,       // läuft gerade das Abbrausen?
   bildzaehler: 0,     // treibt die Zappel-Animation
 };
@@ -104,6 +107,7 @@ function adoptVault(saved){
     laune: zahl(b.laune, 80, 0, 100),
     schlaeft: !!b.schlaeft,
     zugedeckt: !!b.zugedeckt,
+    ort: RAEUME.includes(b.ort) ? b.ort : 'schlaf',
   };
   v.bad = { zusatz: BADEZUSAETZE[(saved.bad || {}).zusatz] ? saved.bad.zusatz : 'klar' };
   const roh = Array.isArray(saved.bestellung) ? saved.bestellung
@@ -113,8 +117,11 @@ function adoptVault(saved){
                   .map(b => ({ liefert: b.liefert, waren: b.waren }));
   v.bestellung = echt.length ? echt : null;
   const o = saved.outfit || {};
-  v.outfit = { kleid: KLEIDER[o.kleid] ? o.kleid : 'rosenrot',
-               haar:  HAARE[o.haar]   ? o.haar  : 'beere' };
+  v.outfit = {
+    stueck: KLEIDUNG[o.stueck] ? o.stueck : 'kleid',
+    farbe:  KLEIDER[o.farbe] ? o.farbe : (KLEIDER[o.kleid] ? o.kleid : 'rosenrot'),
+    frisur: FRISUREN[o.frisur] ? o.frisur : 'lang',
+  };
   const z = saved.zeiten || {};
   v.zeiten = { einschlafen: uhrzeit(z.einschlafen, '02:30'),
                aufwachen:   uhrzeit(z.aufwachen,   '10:30') };
@@ -138,7 +145,8 @@ function adoptVault(saved){
   };
   v.besitz = {
     kleider: gefiltert(bs.kleider, KLEIDER, ['rosenrot','himmelblau']),
-    haare:   gefiltert(bs.haare,   HAARE,   ['beere','honig']),
+    stuecke: gefiltert(bs.stuecke, KLEIDUNG, ['kleid','schlafanzug']),
+    frisuren: gefiltert(bs.frisuren, FRISUREN, ['lang','kurz']),
     waende:  gefiltert(bs.waende,  WANDFARBEN, ['flieder','butter','minze','himmel','rosa']),
     boeden:  gefiltert(bs.boeden,  BODENFARBEN, ['eiche','perle','beere']),
     bett:    (Array.isArray(bs.bett) ? bs.bett : []).filter(x => BETTZEUG[x]),
@@ -147,8 +155,9 @@ function adoptVault(saved){
   };
   if (!v.besitz.zusaetze.includes(v.bad.zusatz)) v.besitz.zusaetze.push(v.bad.zusatz);
   // Was man trägt, muss man auch besitzen.
-  if (!v.besitz.kleider.includes(v.outfit.kleid)) v.besitz.kleider.push(v.outfit.kleid);
-  if (!v.besitz.haare.includes(v.outfit.haar)) v.besitz.haare.push(v.outfit.haar);
+  if (!v.besitz.kleider.includes(v.outfit.farbe)) v.besitz.kleider.push(v.outfit.farbe);
+  if (!v.besitz.stuecke.includes(v.outfit.stueck)) v.besitz.stuecke.push(v.outfit.stueck);
+  if (!v.besitz.frisuren.includes(v.outfit.frisur)) v.besitz.frisuren.push(v.outfit.frisur);
 
   v.vorrat = {};
   Object.keys(ZUTATEN).forEach(k => {
@@ -419,8 +428,18 @@ function gesamtwohl(){
    Die Szenen richten sich an der Fläche aus statt an festen Punkten;
    deshalb steht unten überall `s.b` und `s.h` statt einer Zahl. */
 
-const BUEHNE_ANTEIL = 0.46;     // Anteil der Fensterhöhe
-const MASS_MIN = 2, MASS_MAX = 4;
+const BUEHNE_ANTEIL = 0.46;
+
+/* Wie viele Bildpunkte ein **gezeichneter** Platzhalter-Pixel belegt.
+
+   Gelieferte Grafiken werden 1:1 gezeichnet — ein gemalter Pixel ist ein
+   Bildpunkt. Meine Platzhalter sind grob und dürfen das auch sein; sie
+   werden dreifach gesetzt. Dadurch passen beide zusammen, ohne dass eine
+   gelieferte Datei verkleinert werden müsste: die erste Pflanze kam mit
+   120 × 140 Punkten, und bei der alten Auflösung wäre sie so breit
+   gewesen wie die ganze Küche. */
+const GROB = 3;
+
 const SCHIRM_MIN_B = 96, SCHIRM_MAX_B = 260;
 const SCHIRM_MIN_H = 88, SCHIRM_MAX_H = 200;
 
@@ -428,13 +447,13 @@ function buehneMasse(){
   const el = typeof document !== 'undefined' ? document.getElementById('buehne') : null;
   const breite = el ? el.clientWidth : 0;
   const hoehe = typeof window !== 'undefined' ? Math.round(window.innerHeight * BUEHNE_ANTEIL) : 0;
-  if (!(breite > 60) || !(hoehe > 60)) return { b: 148, h: 112, mass: 2 };  // jsdom misst nicht
-  const mass = Math.max(MASS_MIN, Math.min(MASS_MAX, Math.floor(hoehe / 118)));
+  if (!(breite > 60) || !(hoehe > 60)) return { b: 148, h: 112, mass: GROB, fein: 1 };
   const klemm = (x, min, max) => Math.max(min, Math.min(max, x));
   return {
-    b: klemm(Math.floor(breite / mass), SCHIRM_MIN_B, SCHIRM_MAX_B),
-    h: klemm(Math.floor(hoehe / mass), SCHIRM_MIN_H, SCHIRM_MAX_H),
-    mass,
+    b: klemm(Math.floor(breite / GROB), SCHIRM_MIN_B, SCHIRM_MAX_B),
+    h: klemm(Math.floor(hoehe / GROB), SCHIRM_MIN_H, SCHIRM_MAX_H),
+    mass: GROB,     // Kantenlänge eines gezeichneten Platzhalter-Pixels
+    fein: 1,        // Kantenlänge eines Punktes in einer gelieferten Datei
   };
 }
 
@@ -493,10 +512,39 @@ function raumFarben(raum){
            wandmuster: KACHELN[r.wandmuster], bodenmuster: KACHELN[r.bodenmuster] };
 }
 
+/* Die sechs Plätze: Stofffarbe und Haarfarbe. Die Haarfarbe ist fest —
+   wählbar ist die Frisur, nicht ihre Farbe. */
 function outfitPlaetze(){
-  const k = KLEIDER[DATA.outfit.kleid].farben;
-  const h = HAARE[DATA.outfit.haar].farben;
-  return [k[0], k[1], k[2], h[0], h[1], h[2]];
+  const k = KLEIDER[DATA.outfit.farbe].farben;
+  return [k[0], k[1], k[2], HAARFARBE[0], HAARFARBE[1], HAARFARBE[2]];
+}
+
+/* Kopf und Körper aneinandergesetzt. Eine neue Frisur kostet so kein
+   zweites Kleid und umgekehrt. */
+function bellaRaster(){
+  return FRISUREN[DATA.outfit.frisur].p.concat(KLEIDUNG[DATA.outfit.stueck].p);
+}
+
+function stoffFarben(){ return KLEIDER[DATA.outfit.farbe].farben; }
+
+/* Nachts liegt sie nicht jeden Tag gleich da. Die Haltung hängt am
+   Kalendertag, nicht am Zufall — sonst zappelte sie im Bett. */
+const SCHLAFLAGEN = [
+  { dx: 0,  dy: 0,  spiegel: false },
+  { dx: 6,  dy: 1,  spiegel: false },
+  { dx: -5, dy: 0,  spiegel: true  },
+  { dx: 2,  dy: -1, spiegel: true  },
+  { dx: -2, dy: 1,  spiegel: false },
+];
+
+function schlaflage(jetzt){
+  const d = new Date(jetzt || Date.now());
+  /* Der Schlaf geht über Mitternacht. Die frühen Stunden werden dem
+     Vorabend zugerechnet, damit sie sich nicht um drei Uhr umdreht. */
+  const nacht = new Date(d);
+  if (d.getHours() < 12) nacht.setDate(nacht.getDate() - 1);
+  const schluessel = nacht.getFullYear() + '-' + nacht.getMonth() + '-' + nacht.getDate();
+  return SCHLAFLAGEN[streuung(schluessel) % SCHLAFLAGEN.length];
 }
 
 /* Zappeln: ein Pixel reicht — zwei sehen aus, als würde sie hüpfen. */
@@ -548,20 +596,32 @@ function maleZimmer(ctx, s, raum){
   maleKachel(ctx, f.bodenmuster, 0, bodenY, s.b, s.h - bodenY, s.mass, f.boden);
   px(ctx, s, 0, bodenY - 2, s.b, 2, PALETTE.K);
 
-  const stoff = KLEIDER[DATA.outfit.kleid].farben;
+  const stoff = stoffFarben();
   EINRICHTUNG[raum].forEach(m => {
     const p = platzieren(m, s, bodenY);
     maleSprite(ctx, MOEBEL[m.s], p.x, p.y, s.mass, [stoff[0], stoff[1], stoff[2]]);
   });
 
+  // Die Pflanze in der Küche: die erste gelieferte Grafik.
+  if (raum === 'kueche'){
+    const mp = bildMasse(s, 'deko_pflanze');
+    if (mp) maleBild(ctx, s, 'deko_pflanze', s.b - mp.b - 4, bodenY + 4 - mp.h);
+  }
+
+  // Bella steht nur in dem Zimmer, in dem sie gerade ist.
+  if (DATA.bella.ort !== raum) return;
   const wo = BELLA_STELLE[raum];
   const bx = wo === 'links' ? Math.round(s.b * 0.16)
            : wo === 'rechts' ? Math.round(s.b * 0.72)
            : Math.round(s.b * 0.44);
   const by = bodenY + 10 - 32 + zappel();
   const plaetze = outfitPlaetze();
-  maleRaster(ctx, BELLA_STEHT, bx, by, s.mass, plaetze);
-  maleRaster(ctx, GESICHTER[stimmung()], bx + GESICHT_X, by + GESICHT_Y, s.mass, plaetze);
+  const isst = state.essen && raum === 'kueche';
+  const neigung = isst && (Math.floor(Date.now() / 220) % 4) % 3 === 1 ? 1 : 0;
+  maleFigur(ctx, s, 'bella_steht', bellaRaster(), bx, by + neigung, plaetze);
+  const takt = isst ? maleBellaIsst(ctx, s, bx, by, bx + 12, bodenY + 6) : 0;
+  maleRaster(ctx, GESICHTER[isst ? (takt === 2 ? 'satt' : 'froh') : stimmung()],
+             bx + GESICHT_X, by + neigung + GESICHT_Y, s.mass, plaetze);
 }
 
 /* ---------- Die Schlafnische ----------
@@ -688,22 +748,27 @@ function maleMatratze(ctx, s, mx, unten, rx){
    sieht man, dass "Zudecken" etwas getan hat. */
 function maleBellaImBett(ctx, s, mx, unten){
   const plaetze = outfitPlaetze();
-  const stoff = KLEIDER[DATA.outfit.kleid].farben;
+  const stoff = stoffFarben();
   const zu = DATA.bella.zugedeckt;
-  const kopfX = mx - 20, kopfY = unten - 22;
+  const lage = DATA.bella.schlaeft ? schlaflage() : SCHLAFLAGEN[0];
+  const kopfX = mx - 20 + lage.dx, kopfY = unten - 22 + lage.dy;
 
   // Unbedeckt einen Ton dunkler als die Matratze, sonst verschwände der
   // Körper darin und es läge nur ein Kopf auf dem Bett.
   const huegel = zu ? stoff[1] : '#B99A82';
   const huegelHell = zu ? stoff[0] : '#D4B79C';
-  ellipse(ctx, s, mx + 9, unten - 12, 20, 7, huegel);
-  ellipse(ctx, s, mx + 9, unten - 13, 18, 5, huegelHell);
+  // Der Hügel liegt auf der Seite, auf der sie nicht den Kopf hat.
+  const seite = lage.spiegel ? -1 : 1;
+  ellipse(ctx, s, mx + 9 * seite + lage.dx, unten - 12 + lage.dy, 20, 7, huegel);
+  ellipse(ctx, s, mx + 9 * seite + lage.dx, unten - 13 + lage.dy, 18, 5, huegelHell);
   if (zu){
-    px(ctx, s, mx - 11, unten - 18, 8, 3, stoff[0]);
-    px(ctx, s, mx - 11, unten - 15, 8, 1, stoff[2]);
+    px(ctx, s, kopfX + 9, unten - 18 + lage.dy, 8, 3, stoff[0]);
+    px(ctx, s, kopfX + 9, unten - 15 + lage.dy, 8, 1, stoff[2]);
   }
 
-  maleRaster(ctx, BELLA_LIEGT, kopfX, kopfY, s.mass, plaetze);
+  const kopf = lage.spiegel ? BELLA_LIEGT.map(z => [...z].reverse().join('')) : BELLA_LIEGT;
+  maleFigur(ctx, s, 'bella_liegt', kopf, lage.spiegel ? mx + 20 + lage.dx - 24 : kopfX,
+            kopfY, plaetze);
 }
 
 function maleSchlafnische(ctx, s){
@@ -759,7 +824,7 @@ function maleSchlafnische(ctx, s){
   const bettUnten = unten - 4, bettRx = rx - 4;
   maleKissenwand(ctx, s, mx, bettUnten, bettRx);
   maleMatratze(ctx, s, mx, bettUnten, bettRx);
-  maleBellaImBett(ctx, s, mx, bettUnten);
+  if (DATA.bella.ort === 'schlaf') maleBellaImBett(ctx, s, mx, bettUnten);
 
   // Was aus der Post auf dem Bett liegt: rechts neben Bella, auf der
   // Matratze, nicht in der Luft.
@@ -836,12 +901,15 @@ function maleBadeszene(ctx, s){
   }
 
   // Bella sitzt hinten in der Wanne, angelehnt — nicht mitten im Wasser.
+  const inDerWanne = DATA.bella.ort === 'bad';
   const plaetze = outfitPlaetze();
   const bx = mx - 12, by = my - ry + 6;
-  maleRaster(ctx, BELLA_STEHT.slice(0, 17), bx, by, s.mass, plaetze);
+  if (inDerWanne){
+  maleFigur(ctx, s, 'bella_steht', bellaRaster().slice(0, KOPF_H), bx, by, plaetze);
   maleRaster(ctx, GESICHTER[state.schaum ? 'froh' : stimmung()],
              bx + GESICHT_X, by + GESICHT_Y, s.mass, plaetze);
-  if (state.schaum){
+  }
+  if (state.schaum && inDerWanne){
     // Schaumhaube und Schaumkragen, damit man das Einschäumen sieht.
     ellipse(ctx, s, mx, by + 1, 10, 5, '#FFFFFF');
     ellipse(ctx, s, mx - 6, by - 1, 4, 3, '#FFFFFF');
@@ -849,7 +917,7 @@ function maleBadeszene(ctx, s){
     ellipse(ctx, s, mx, by + 17, 13, 4, '#F4F0F8');
   }
 
-  if (state.dusche) maleDusche(ctx, s, mx, by);
+  if (state.dusche && inDerWanne) maleDusche(ctx, s, mx, by);
 
   /* Was auf dem Rand steht, muss dem Bogen der Wanne folgen — sonst
      schwebt die Kerze an der Wand. Die Höhe wird je Gegenstand aus der
@@ -892,11 +960,16 @@ function maleFigur(ctx, s, platz, raster, x, y, plaetze){
    fertige Gericht, dann Bella beim Essen. Die Essensbewegung ist für
    jedes Gericht dieselbe — sie zeigt das Essen, nicht das Gericht. */
 
+/* Nur das Kochen bekommt die eigene Ansicht. Gegessen wird wieder in
+   der Küche, bei Bella — sie soll dabei zu sehen sein, nicht auf einer
+   Karte ohne Raum. */
 const KOCHSCHRITTE = [
   { phase: 'zutaten', dauer: 2000 },
   { phase: 'gericht', dauer: 1800 },
-  { phase: 'essen',   dauer: 2800 },
 ];
+
+/* So lange isst sie danach in der Küche. */
+const ESSEN_DAUER = 3000;
 
 function kochszeneStarten(rezept){
   state.szene = { art: 'kochen', rezept, schritt: 0, bis: Date.now() + KOCHSCHRITTE[0].dauer };
@@ -908,7 +981,7 @@ function kochszeneWeiter(){
   sz.schritt++;
   if (sz.schritt >= KOCHSCHRITTE.length){
     state.szene = null;
-    return true;                       // fertig, das Gericht wirkt jetzt
+    return true;                       // fertig: jetzt wird in der Küche gegessen
   }
   sz.bis = Date.now() + KOCHSCHRITTE[sz.schritt].dauer;
   return false;
@@ -982,6 +1055,23 @@ function maleGerichtszene(ctx, s, rezept){
   schrift(ctx, s, rezept.name.toUpperCase(), Math.round(s.h * 0.14));
 }
 
+/* Bella isst in der Küche: Teller vor ihr, Löffel zum Mund, dieselbe
+   Bewegung für jedes Gericht. */
+function maleBellaIsst(ctx, s, bx, by, mitte, unten){
+  const takt = Math.floor(Date.now() / 220) % 4;
+  const rezept = state.essen ? state.essen.rezept : null;
+  maleFigur(ctx, s, 'teller', KOCHZEUG.teller, mitte - 14, unten - 6, null);
+  if (rezept) ellipse(ctx, s, mitte, unten - 4, 8, 4, zutatFarbe(rezept.aus[0]));
+  const ly = takt >= 2 ? by + 12 : unten - 6;
+  px(ctx, s, mitte + 9, ly, 2, 6, '#D8D2E0');
+  ellipse(ctx, s, mitte + 10, ly - 1, 2, 2, '#EFEAF0');
+  if (takt === 3){
+    px(ctx, s, bx - 4, by + 4, 2, 2, '#FFD166');
+    px(ctx, s, bx + 26, by + 2, 2, 2, '#FF8AC4');
+  }
+  return takt;
+}
+
 function maleEssszene(ctx, s, rezept){
   const k = maleKarte(ctx, s);
   px(ctx, s, k.x, k.y, k.b, k.h, '#3A2E3F');
@@ -999,7 +1089,7 @@ function maleEssszene(ctx, s, rezept){
   const neigung = (takt === 1 || takt === 2) ? 1 : 0;
   const plaetze = outfitPlaetze();
   const bx = mitte - 12, by = unten - 30 + neigung;
-  maleFigur(ctx, s, 'bella_steht', BELLA_STEHT.slice(0, 20), bx, by, plaetze);
+  maleFigur(ctx, s, 'bella_steht', bellaRaster().slice(0, 20), bx, by, plaetze);
   maleRaster(ctx, GESICHTER[takt === 2 ? 'satt' : 'froh'],
              bx + GESICHT_X, by + GESICHT_Y, s.mass, plaetze);
 
@@ -1035,8 +1125,7 @@ function maleKochszene(ctx, s){
   const sz = state.szene;
   const phase = KOCHSCHRITTE[sz.schritt].phase;
   if (phase === 'zutaten') maleArbeitsflaeche(ctx, s, sz.rezept);
-  else if (phase === 'gericht') maleGerichtszene(ctx, s, sz.rezept);
-  else maleEssszene(ctx, s, sz.rezept);
+  else maleGerichtszene(ctx, s, sz.rezept);
 }
 
 function maleRaum(ctx, s, jetzt){
@@ -1292,8 +1381,10 @@ function alleGaben(){
   const gaben = [];
   Object.keys(KLEIDER).forEach(k => { if (!DATA.besitz.kleider.includes(k))
     gaben.push({ art:'kleid', was:k, text:'Ein Kleid in ' + KLEIDER[k].name + '!' }); });
-  Object.keys(HAARE).forEach(k => { if (!DATA.besitz.haare.includes(k))
-    gaben.push({ art:'haar', was:k, text:'Eine Haarfarbe: ' + HAARE[k].name + '.' }); });
+  Object.keys(KLEIDUNG).forEach(k => { if (!DATA.besitz.stuecke.includes(k))
+    gaben.push({ art:'stueck', was:k, text:'Ein neues Kleidungsstück: ' + KLEIDUNG[k].name + '.' }); });
+  Object.keys(FRISUREN).forEach(k => { if (!DATA.besitz.frisuren.includes(k))
+    gaben.push({ art:'frisur', was:k, text:'Eine neue Frisur: ' + FRISUREN[k].name + '.' }); });
   Object.keys(WANDFARBEN).forEach(k => { if (!DATA.besitz.waende.includes(k))
     gaben.push({ art:'wand', was:k, text:'Tapete in ' + WANDFARBEN[k].name + '.' }); });
   Object.keys(BODENFARBEN).forEach(k => { if (!DATA.besitz.boeden.includes(k))
@@ -1331,7 +1422,8 @@ async function postAnnehmen(i){
   if (!p) return;
   DATA.post.splice(i, 1);
   if (p.art === 'kleid' && !DATA.besitz.kleider.includes(p.was)) DATA.besitz.kleider.push(p.was);
-  if (p.art === 'haar'  && !DATA.besitz.haare.includes(p.was))   DATA.besitz.haare.push(p.was);
+  if (p.art === 'stueck' && !DATA.besitz.stuecke.includes(p.was))  DATA.besitz.stuecke.push(p.was);
+  if (p.art === 'frisur' && !DATA.besitz.frisuren.includes(p.was)) DATA.besitz.frisuren.push(p.was);
   if (p.art === 'wand'  && !DATA.besitz.waende.includes(p.was))  DATA.besitz.waende.push(p.was);
   if (p.art === 'boden' && !DATA.besitz.boeden.includes(p.was))  DATA.besitz.boeden.push(p.was);
   if (p.art === 'bett'  && !DATA.besitz.bett.includes(p.was))    DATA.besitz.bett.push(p.was);
@@ -1459,8 +1551,13 @@ async function kochen(r){
 
 /* Am Ende der Essensbewegung wirkt das Gericht. Vorher wäre Bella
    satt, während sie noch die Zutaten vor sich liegen hat. */
+/* Nach den beiden Karten geht es zurück in die Küche: dort isst sie,
+   und erst danach zählt das Gericht. */
 async function kochszeneAbschliessen(rezept){
-  await pflegen({ satt: rezept.satt, laune: rezept.laune, sagt: rezept.name + '! Danke.' });
+  state.raum = 'kueche';
+  DATA.bella.ort = 'kueche';
+  state.essen = { rezept, bis: Date.now() + ESSEN_DAUER };
+  await persist();
 }
 
 /* ---------- Abbrausen ----------
@@ -1567,12 +1664,26 @@ function fensterEinstellungen(){
 function tastenFuer(raum){
   const b = DATA.bella;
   if (state.szene) return [ taste('WEITER', szeneWeiter, 'haupt breit') ];
-  if (state.dusche) return [ taste('…', () => {}, 'aus breit') ];
+  if (state.dusche || state.essen) return [ taste('…', () => {}, 'aus breit') ];
+
   const schlaeft = b.schlaeft;
-  const wach = text => () => { sagen(b.name + ' schläft. ' + text); render(); };
+  const daheim = b.ort === raum;
+  /* Was Bella braucht, geht nur, wenn sie da ist — und nicht, während
+     sie schläft. Statt dessen steht der Ruf-Knopf da. */
+  const braucht = (text, bei, art) => {
+    if (!daheim) return taste(text, () => {
+      sagen(b.name + ' ist nicht hier. Ruf sie.'); render();
+    }, 'aus');
+    if (schlaeft) return taste(text, () => {
+      sagen(b.name + ' schläft.'); render();
+    }, 'aus');
+    return taste(text, bei, art);
+  };
+  const ruf = rufKnopf();
 
   if (raum === 'schlaf'){
     return [
+      ruf,
       schlaeft
         ? taste('AUFWECKEN', async () => {
             // Wecken ist erlaubt, kostet aber Laune — sonst wäre der
@@ -1584,36 +1695,39 @@ function tastenFuer(raum){
         : taste('SCHLAFEN', () => {
             sagen(b.name + ' schläft von selbst um ' + DATA.zeiten.einschlafen + '.'); render();
           }),
-      taste(b.zugedeckt ? 'AUFDECKEN' : 'ZUDECKEN', async () => {
+      daheim ? taste(b.zugedeckt ? 'AUFDECKEN' : 'ZUDECKEN', async () => {
         b.zugedeckt = !b.zugedeckt;
         await pflegen({ ausgeruht: b.zugedeckt ? 6 : 0, laune: b.zugedeckt ? 5 : -1,
                         sagt: b.zugedeckt ? (schlaeft ? '…' : 'Mmh, warm.') : 'Ah, Luft!' });
-      }, b.zugedeckt ? '' : 'haupt'),
+      }, b.zugedeckt ? '' : 'haupt') : null,
       taste('LICHT AUS', () => pflegen({ ausgeruht: 5, laune: 2,
         sagt: schlaeft ? '…' : 'Gute Nacht.' })),
-    ];
+    ].filter(Boolean);
   }
 
   if (raum === 'kueche'){
     return [
-      taste('KOCHEN', schlaeft ? wach('Später.') : fensterKochen, 'haupt'),
-      taste('SNACK' + (snacksDa() ? ' (' + snacksDa() + ')' : ''),
-        schlaeft ? wach('Später.') : (snacksDa() ? fensterSnacks
-          : () => { sagen('Keine Snacks da. Die kommen mit der Post.'); render(); }),
+      ruf,
+      // Kochen geht auch ohne sie — gegessen wird, sobald sie da ist.
+      taste('KOCHEN', fensterKochen, 'haupt'),
+      braucht('SNACK' + (snacksDa() ? ' (' + snacksDa() + ')' : ''),
+        snacksDa() ? fensterSnacks
+          : () => { sagen('Keine Snacks da. Die kommen mit der Post.'); render(); },
         snacksDa() ? '' : 'aus'),
       taste(bestellRest() ? 'BESTELLEN' : 'HEUTE VOLL',
         bestellRest() ? fensterBestellen
           : () => { sagen('Heute schon ' + TAGESMENGE + ' Zutaten bestellt. Morgen wieder.'); render(); },
         bestellRest() ? '' : 'aus'),
-    ];
+    ].filter(Boolean);
   }
 
   if (raum === 'wohnen'){
     return [
-      taste('REDEN', schlaeft ? wach('Pst.') : fensterReden, 'haupt'),
-      ...AKTIVITAETEN.slice(0, 2).map(a => taste(a.name.toUpperCase(),
-        schlaeft ? wach('Pst.') : () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
-    ];
+      ruf,
+      braucht('REDEN', fensterReden, 'haupt'),
+      ...AKTIVITAETEN.slice(0, 2).map(a => braucht(a.name.toUpperCase(),
+        () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
+    ].filter(Boolean);
   }
 
   if (raum === 'bad'){
@@ -1621,23 +1735,24 @@ function tastenFuer(raum){
        Zähneputzen und Haarewaschen als eigene Knöpfe daneben machten aus
        der Wanne eine Knopfsammlung. */
     return [
+      ruf,
       state.schaum
-        ? taste('ABBRAUSEN', () => { duscheStarten(); render(); }, 'haupt')
-        : taste('EINSCHÄUMEN', schlaeft ? wach('Morgen.') : async () => {
+        ? braucht('ABBRAUSEN', () => { duscheStarten(); render(); }, 'haupt')
+        : braucht('EINSCHÄUMEN', async () => {
             state.schaum = true;
             await pflegen({ laune: 6, sagt: 'Kitzelt!' });
           }, 'haupt'),
       taste('BADEZUSATZ', fensterBadezusatz),
-      taste('PLANSCHEN', schlaeft ? wach('Morgen.') : () =>
-        pflegen({ laune: 8, sauber: 4, sagt: 'Platsch!' })),
-    ];
+      braucht('PLANSCHEN', () => pflegen({ laune: 8, sauber: 4, sagt: 'Platsch!' })),
+    ].filter(Boolean);
   }
 
   return [
-    taste('ANZIEHEN', fensterAnziehen, 'haupt'),
-    ...AKTIVITAETEN.slice(2, 4).map(a => taste(a.name.toUpperCase(),
-      schlaeft ? wach('Pst.') : () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
-  ];
+    ruf,
+    braucht('ANZIEHEN', fensterAnziehen, 'haupt'),
+    ...AKTIVITAETEN.slice(2, 4).map(a => braucht(a.name.toUpperCase(),
+      () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
+  ].filter(Boolean);
 }
 
 async function szeneWeiter(){
@@ -1648,10 +1763,17 @@ async function szeneWeiter(){
   render();
 }
 
-/* Läuft eine Szene oder die Dusche ab? Wird jeden Takt geprüft. */
+/* Läuft eine Szene, das Essen oder die Dusche ab? Wird jeden Takt
+   geprüft; jedes davon endet für sich. */
 async function zeitgesteuertes(){
   if (state.szene && Date.now() >= state.szene.bis){
     await szeneWeiter();
+    return true;
+  }
+  if (state.essen && Date.now() >= state.essen.bis){
+    const r = state.essen.rezept;
+    state.essen = null;
+    await pflegen({ satt: r.satt, laune: r.laune, sagt: r.name + '! Danke.' });
     return true;
   }
   if (state.dusche && Date.now() >= state.dusche.bis){
@@ -1661,6 +1783,21 @@ async function zeitgesteuertes(){
     return true;
   }
   return false;
+}
+
+/* In jedem Zimmer lässt sich Bella rufen. Schläft sie, kommt sie
+   nicht — das ist der Sinn des Schlafrhythmus. */
+function rufKnopf(){
+  const b = DATA.bella;
+  if (b.ort === state.raum) return null;
+  if (b.schlaeft) return taste('RUFEN', () => {
+    sagen(b.name + ' schläft und kommt nicht.');
+    render();
+  }, 'aus');
+  return taste('RUFEN', async () => {
+    b.ort = state.raum;
+    await pflegen({ laune: 2, sagt: 'Ich komm!' });
+  }, 'haupt');
 }
 
 function lieferText(){
@@ -1751,16 +1888,24 @@ function fensterEinrichten(){
 function fensterAnziehen(){
   state.offen = 'anziehen';
   fensterOeffnen('ANZIEHEN', blatt => {
-    blatt.appendChild(waehler('KLEID',
+    blatt.appendChild(waehler('KLEIDUNGSSTÜCK',
+      DATA.besitz.stuecke.map(id => ({ id, name: KLEIDUNG[id].name })),
+      id => DATA.outfit.stueck === id,
+      async id => { DATA.outfit.stueck = id;
+                    await pflegen({ laune: 3, sagt: KLEIDUNG[id].name + '! Steht mir, oder?' });
+                    fensterAnziehen(); }));
+    blatt.appendChild(waehler('STOFF',
       DATA.besitz.kleider.map(id => ({ id, name: KLEIDER[id].name, farbe: KLEIDER[id].farben[1] })),
-      id => DATA.outfit.kleid === id,
-      async id => { DATA.outfit.kleid = id; await pflegen({ laune: 3, sagt: 'Steht mir, oder?' });
+      id => DATA.outfit.farbe === id,
+      async id => { DATA.outfit.farbe = id; await pflegen({ laune: 2, sagt: 'Schöne Farbe.' });
                     fensterAnziehen(); }));
-    blatt.appendChild(waehler('HAARE',
-      DATA.besitz.haare.map(id => ({ id, name: HAARE[id].name, farbe: HAARE[id].farben[1] })),
-      id => DATA.outfit.haar === id,
-      async id => { DATA.outfit.haar = id; await pflegen({ laune: 3, sagt: 'Neue Farbe!' });
+    blatt.appendChild(waehler('FRISUR',
+      DATA.besitz.frisuren.map(id => ({ id, name: FRISUREN[id].name })),
+      id => DATA.outfit.frisur === id,
+      async id => { DATA.outfit.frisur = id; await pflegen({ laune: 3, sagt: 'Neue Frisur!' });
                     fensterAnziehen(); }));
+    blatt.appendChild(h('div', { class:'leer',
+      text:'Die Haarfarbe gehört zu ' + DATA.bella.name + ' — die bleibt.' }));
   });
 }
 
@@ -1923,7 +2068,8 @@ function bildplaetzeAnmelden(){
    ist diese Marke nicht gesetzt — dort kommt alles mit der Post. */
 function allesFreischalten(){
   DATA.besitz.kleider  = Object.keys(KLEIDER);
-  DATA.besitz.haare    = Object.keys(HAARE);
+  DATA.besitz.stuecke  = Object.keys(KLEIDUNG);
+  DATA.besitz.frisuren = Object.keys(FRISUREN);
   DATA.besitz.waende   = Object.keys(WANDFARBEN);
   DATA.besitz.boeden   = Object.keys(BODENFARBEN);
   DATA.besitz.bett     = Object.keys(BETTZEUG);

@@ -47,53 +47,188 @@ const KLEIDER = {
   mitternacht:{ name: 'Mitternacht',farben: ['#B9A9E8', '#6B4FD6', '#392A82'] },
 };
 
-const HAARE = {
-  beere:    { name: 'Beere',    farben: ['#FF6FD8', '#C13BC9', '#7B2BA8'] },
-  honig:    { name: 'Honig',    farben: ['#FFE08A', '#F0B44A', '#B87A22'] },
-  kastanie: { name: 'Kastanie', farben: ['#D08A5A', '#9A5A2E', '#5C3418'] },
-  nacht:    { name: 'Nacht',    farben: ['#7E7AA8', '#4A4470', '#26223D'] },
-  mint:     { name: 'Mint',     farben: ['#A8F8DC', '#48D8B0', '#1E8F76'] },
-  koralle:  { name: 'Koralle',  farben: ['#FFB0A0', '#FF6B52', '#B83A26'] },
-};
 
 /* ---------- Bella ----------
-   24 × 32. Die Ziffern sind Plätze: 1–3 Kleid (hell/voll/dunkel),
-   4–6 Haare. Drei Haltungen, sonst wirkt sie tot. */
+   Kopf und Körper sind getrennt: der Kopf trägt die Frisur, der Körper
+   das Kleidungsstück. Beide werden beim Zeichnen aneinandergesetzt —
+   so kostet eine neue Frisur kein zweites Kleid und umgekehrt.
 
-const BELLA_STEHT = [
-  '.......KKKKKKKKKK.......',
-  '.....KK5555555555KK.....',
-  '....K44444444444444K....',
-  '...K4444444444444444K...',
-  '...K4455555555555544K...',
-  '...K455hhhhhhhhhh554K...',
-  '...K45hhhhhhhhhhhh54K...',
-  '...K45hhhhhhhhhhhh54K...',
-  '...K45hKKhhhhhhKKh54K...',
-  '...K45hKWhhhhhhKWh54K...',
-  '...K45hrhhhhhhhhrh54K...',
-  '...K45hhhhhKKhhhhh54K...',
-  '...K455hhhhhhhhhh554K...',
-  '....K55hhhhhhhhhh55K....',
-  '.....K5hhhhhhhhhh5K.....',
-  '.....K55hhHhhHhh55K.....',
-  '....K5555HhhhhH5555K....',
-  '...Khh222222222222hhK...',
-  '..Khh22222222222222hhK..',
-  '..Khh22222222222222hhK..',
-  '.Khh2222222222222222hhK.',
-  '.Khh2222222222222222hhK.',
-  '.KhH2222222222222222HhK.',
-  '.K22222222222222222222K.',
-  'K2222222222222222222222K',
-  'K1111111111111111111111K',
-  'K1111111111111111111111K',
-  '.KKKKKKKKKKKKKKKKKKKKKK.',
-  '........hhh..hhh........',
-  '........hhh..hhh........',
-  '.......3333..3333.......',
-  '.......KKKK..KKKK.......',
-];
+   Ziffern sind Plätze: 1–3 der Stoff des Kleidungsstücks, 4–6 das Haar.
+   Die Haarfarbe ist fest (HAARFARBE); wählbar ist die Frisur. */
+
+const KOPF_H = 17;          // so hoch ist jeder Kopf
+const KOERPER_H = 15;       // so hoch ist jeder Körper
+
+const FRISUREN = {
+  lang: { name: 'Lang', p: [
+    '.......KKKKKKKKKK.......',
+    '.....KK5555555555KK.....',
+    '....K44444444444444K....',
+    '...K4444444444444444K...',
+    '...K4455555555555544K...',
+    '...K455hhhhhhhhhh554K...',
+    '...K45hhhhhhhhhhhh54K...',
+    '...K45hhhhhhhhhhhh54K...',
+    '...K45hKKhhhhhhKKh54K...',
+    '...K45hKWhhhhhhKWh54K...',
+    '...K45hrhhhhhhhhrh54K...',
+    '...K45hhhhhKKhhhhh54K...',
+    '...K455hhhhhhhhhh554K...',
+    '....K55hhhhhhhhhh55K....',
+    '.....K5hhhhhhhhhh5K.....',
+    '.....K55hhHhhHhh55K.....',
+    '....K5555HhhhhH5555K....',
+  ]},
+  kurz: { name: 'Bob', p: [
+    '.......KKKKKKKKKK.......',
+    '.....KK5555555555KK.....',
+    '....K44444444444444K....',
+    '...K4444444444444444K...',
+    '...K4455555555555544K...',
+    '...K455hhhhhhhhhh554K...',
+    '...K45hhhhhhhhhhhh54K...',
+    '...K45hhhhhhhhhhhh54K...',
+    '...K45hKKhhhhhhKKh54K...',
+    '...K45hKWhhhhhhKWh54K...',
+    '...K45hrhhhhhhhhrh54K...',
+    '...K45hhhhhKKhhhhh54K...',
+    '...K455hhhhhhhhhh554K...',
+    '....KKKhhhhhhhhhhKKK....',
+    '......KhhhhhhhhhhhK.....',
+    '......KhhhhHhhHhhhK.....',
+    '.....KKhhhHhhhhHhhKK....',
+  ]},
+  zopf: { name: 'Zopf', p: [
+    '.......KKKKKKKKKK.......',
+    '.....KK5555555555KK.....',
+    '....K44444444444444K....',
+    '...K4444444444444444K4K.',
+    '...K4455555555555544K54K',
+    '...K455hhhhhhhhhh554K54K',
+    '...K45hhhhhhhhhhhh54K54K',
+    '...K45hhhhhhhhhhhh54K54K',
+    '...K45hKKhhhhhhKKh54K54K',
+    '...K45hKWhhhhhhKWh54K54K',
+    '...K45hrhhhhhhhhrh54K54K',
+    '...K45hhhhhKKhhhhh54K44K',
+    '...K455hhhhhhhhhh554KKKK',
+    '....KKKhhhhhhhhhhKKK....',
+    '......KhhhhhhhhhhhK.....',
+    '......KhhhhHhhHhhhK.....',
+    '.....KKhhhHhhhhHhhKK....',
+  ]},
+  locken: { name: 'Locken', p: [
+    '....KKK.KKKKKKKK.KKK....',
+    '..KK444KK55555544K444KK.',
+    '.K44444444444444444444K.',
+    '.K44555444444444455544K.',
+    '..K4455555555555544444K.',
+    '...K455hhhhhhhhhh554K4K.',
+    '.K4K45hhhhhhhhhhhh54K4K.',
+    '.K4K45hhhhhhhhhhhh54K4K.',
+    '.K4K45hKKhhhhhhKKh54K4K.',
+    '.K4K45hKWhhhhhhKWh54K4K.',
+    '.K44K5hrhhhhhhhhrh54K4K.',
+    '..K4K5hhhhhKKhhhhh54K4K.',
+    '..K44455hhhhhhhhh5544K4K',
+    '...K4455hhhhhhhhh5544KK.',
+    '....K455hhhhhhhh554K....',
+    '.....K55hhHhhHhh55K.....',
+    '....K4555HhhhhH5554K....',
+  ]},
+};
+
+const KLEIDUNG = {
+  kleid: { name: 'Kleid', p: [
+    '...Khh222222222222hhK...',
+    '..Khh22222222222222hhK..',
+    '..Khh22222222222222hhK..',
+    '.Khh2222222222222222hhK.',
+    '.Khh2222222222222222hhK.',
+    '.KhH2222222222222222HhK.',
+    '.K22222222222222222222K.',
+    'K2222222222222222222222K',
+    'K1111111111111111111111K',
+    'K1111111111111111111111K',
+    '.KKKKKKKKKKKKKKKKKKKKKK.',
+    '........hhh..hhh........',
+    '........hhh..hhh........',
+    '.......3333..3333.......',
+    '.......KKKK..KKKK.......',
+  ]},
+  latzhose: { name: 'Latzhose', p: [
+    '...KhhWWWWWWWWWWWWhhK...',
+    '..KhhWW2222222222WWhhK..',
+    '..KhhW222222222222WhhK..',
+    '.KhhW22222222222222WhhK.',
+    '.KhhW22222222222222WhhK.',
+    '.KhHW22222222222222WHhK.',
+    '.KW2222222222222222222K.',
+    '.K22222222222222222222K.',
+    '.K11111111111111111111K.',
+    '.K11111111KK1111111111K.',
+    '.K111111111KK111111111K.',
+    '.K11111111.KK111111111K.',
+    '.KKKKKKKKK.KKKKKKKKKKKK.',
+    '...3333333...33333333...',
+    '...KKKKKKK...KKKKKKKK...',
+  ]},
+  rock: { name: 'Rock & Top', p: [
+    '...Khh222222222222hhK...',
+    '..Khh22222222222222hhK..',
+    '..Khh22222222222222hhK..',
+    '.Khh2222222222222222hhK.',
+    '.KhhKKKKKKKKKKKKKKKKhhK.',
+    '.KhH1111111111111111HhK.',
+    '.K11111111111111111111K.',
+    'K1111111111111111111111K',
+    'K1111111111111111111111K',
+    '.KKKKKKKKKKKKKKKKKKKKKK.',
+    '.......hhhh..hhhh.......',
+    '.......hhhh..hhhh.......',
+    '.......hhhh..hhhh.......',
+    '.......3333..3333.......',
+    '.......KKKK..KKKK.......',
+  ]},
+  pulli: { name: 'Pulli', p: [
+    '..KhhK2222222222KhhK....',
+    '.Khh22222222222222hhK...',
+    '.Khh2222222222222222hhK.',
+    'Khh222222222222222222hhK',
+    'Khh222222222222222222hhK',
+    'KhH222222222222222222HhK',
+    'K2222222222222222222222K',
+    'K2222222222222222222222K',
+    '.K11111111KK1111111111K.',
+    '.K11111111KK1111111111K.',
+    '.K11111111KK1111111111K.',
+    '.K11111111KK1111111111K.',
+    '.KKKKKKKKK..KKKKKKKKKKK.',
+    '..333333.....3333333....',
+    '..KKKKKK.....KKKKKKK....',
+  ]},
+  schlafanzug: { name: 'Schlafanzug', p: [
+    '...Khh111111111111hhK...',
+    '..Khh11111111111111hhK..',
+    '..Khh11311131113111hhK..',
+    '.Khh1111111111111111hhK.',
+    '.Khh1131113111311131hhK.',
+    '.KhH1111111111111111HhK.',
+    '.K11311131113111311131K.',
+    'K1111111111111111111111K',
+    'K2222222222222222222222K',
+    '.K22222222KK2222222222K.',
+    '.K22322232KK2223222322K.',
+    '.K22222222KK2222222222K.',
+    '.KKKKKKKKK..KKKKKKKKKKK.',
+    '..hhhhhh.....hhhhhhh....',
+    '..KKKKKK.....KKKKKKK....',
+  ]},
+};
+
+/* Die Haarfarbe steht fest — wählbar ist die Frisur. */
+const HAARFARBE = ['#FF6FD8', '#C13BC9', '#7B2BA8'];
+
 
 /* Gesichter als Flicken über dem Grundbild: 12 × 5 an der Stelle (6, 8).
    Eine eigene Haltung je Stimmung wäre viermal dasselbe Kleid. */
@@ -578,7 +713,14 @@ function pruefeRaster(){
       for (const ch of r) if (!erlaubt.has(ch)) fehler.push(name + ' Zeile ' + j + ': unbekannt ' + JSON.stringify(ch));
     });
   };
-  pruefe('bella', BELLA_STEHT, 24);
+  Object.entries(FRISUREN).forEach(([n, f]) => {
+    if (f.p.length !== KOPF_H) fehler.push('frisur ' + n + ': ' + f.p.length + ' Zeilen statt ' + KOPF_H);
+    pruefe('frisur_' + n, f.p, 24);
+  });
+  Object.entries(KLEIDUNG).forEach(([n, k]) => {
+    if (k.p.length !== KOERPER_H) fehler.push('kleidung ' + n + ': ' + k.p.length + ' Zeilen statt ' + KOERPER_H);
+    pruefe('kleidung_' + n, k.p, 24);
+  });
   pruefe('bella_liegt', BELLA_LIEGT, 24);
   Object.entries(GESICHTER).forEach(([n, g]) => pruefe('gesicht_' + n, g, 12));
   Object.entries(KACHELN).forEach(([n, k]) => pruefe('kachel_' + n, k, 8));
