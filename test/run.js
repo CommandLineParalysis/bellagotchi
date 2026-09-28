@@ -18,7 +18,24 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'NACHHOLGRENZE','BODEN_WERT','tageszeit','massstab','KLEIDER',
                      'erinnerungsPlan','ERINNERUNG','faelligAb','erinnerungenSchalten',
                      'FRUEHESTENS_MIN','lieferzeit','lieferungPruefen','BESTELLMENGE',
-                     'LIEFERSTUNDE','BADEZUSAETZE','BETTZEUG','BADSPIELZEUG','buehneMasse']);
+                     'LIEFERSTUNDE','BADEZUSAETZE','BETTZEUG','BADSPIELZEUG','buehneMasse',
+                     'szeneWeiter','kochszenePhase','zeitgesteuertes','duscheAnteil',
+                     'KOCHSCHRITTE','BILDPLAETZE','bildDa','DUSCHE_DAUER']);
+
+  /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
+     Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
+  const szeneDurchlaufen = async () => {
+    for (let i = 0; i < T.KOCHSCHRITTE.length + 1 && T.state.szene; i++){
+      await T.szeneWeiter();
+      await wait(20);
+    }
+  };
+  const duscheDurchlaufen = async () => {
+    if (!T.state.dusche) return;
+    T.state.dusche.bis = Date.now() - 1;
+    await T.zeitgesteuertes();
+    await wait(25);
+  };
 
   const tab = r => $$('#nav .tab').find(t => t.dataset.raum === r);
   const taste = text => $$('#tasten .taste').find(t => t.textContent === text);
@@ -117,6 +134,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     await wait(30);
     click(taste('ABBRAUSEN'));
     await wait(30);
+    await duscheDurchlaufen();
     click(tab('wohnen'));
     await wait(20);
     click(taste('MUSIK HÖREN'));
@@ -147,6 +165,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     await wait(40);
     if (T.DATA.vorrat.mehl !== 1 || T.DATA.vorrat.ei !== 1) throw new Error('Zutaten nicht verbraucht');
     if (!T.DATA.kochbuch.includes('pfannkuchen')) throw new Error('nicht im Kochbuch');
+    // Satt wird sie erst am Ende der Essensbewegung, nicht schon beim Anrühren.
+    if (T.DATA.bella.satt > 30) throw new Error('schon satt, bevor sie gegessen hat');
+    await szeneDurchlaufen();
     if (T.DATA.bella.satt <= 30) throw new Error('nicht satter: ' + T.DATA.bella.satt);
     return 'Mehl + Ei = Pfannkuchen, satt ' + Math.round(T.DATA.bella.satt);
   });
@@ -170,6 +191,33 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     click($('#modalblatt .schliessen'));
     await wait(20);
     return 'alle abgeblendet';
+  });
+
+  await p.check('Kochen zeigt drei Bilder nacheinander', async () => {
+    T.DATA.vorrat.honig = 2; T.DATA.vorrat.milch = 2;
+    T.DATA.bella.satt = 30;
+    click(taste('KOCHEN'));
+    await wait(25);
+    click($$('#zutaten .stueck').find(b => b.dataset.zutat === 'honig'));
+    await wait(20);
+    click($$('#zutaten .stueck').find(b => b.dataset.zutat === 'milch'));
+    await wait(20);
+    click($('#kochen'));
+    await wait(40);
+    const gesehen = [];
+    for (let i = 0; i < 4 && T.state.szene; i++){
+      gesehen.push(T.kochszenePhase());
+      // Während einer Szene gibt es nur den Weiter-Knopf.
+      const knoepfe = $$('#tasten .taste').map(t => t.textContent);
+      if (knoepfe.join() !== 'WEITER') throw new Error('Tasten während der Szene: ' + knoepfe.join());
+      await T.szeneWeiter();
+      await wait(20);
+    }
+    if (gesehen.join(',') !== 'zutaten,gericht,essen')
+      throw new Error('Reihenfolge: ' + gesehen.join(','));
+    if (T.state.szene) throw new Error('Szene läuft weiter');
+    if (T.DATA.bella.satt <= 30) throw new Error('am Ende nicht satt');
+    return gesehen.join(' → ');
   });
 
   /* --- Reden --- */
@@ -247,6 +295,7 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     if (!jetzt.includes('ABBRAUSEN')) throw new Error('kein Abbrausen: ' + jetzt.join(','));
     click(taste('ABBRAUSEN'));
     await wait(30);
+    await duscheDurchlaufen();
     if (T.state.schaum) throw new Error('Schaum blieb');
     if (T.DATA.bella.sauber < 60) throw new Error('nicht sauber: ' + T.DATA.bella.sauber);
     return 'einschäumen → abbrausen, sauber ' + Math.round(T.DATA.bella.sauber);
@@ -277,6 +326,50 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     click($('#modalblatt .schliessen'));
     await wait(20);
     return z.name + ': ' + z.wasser.join(' ');
+  });
+
+  await p.check('Abbrausen läuft als Bewegung, nicht auf Knopfdruck', async () => {
+    T.DATA.bella.sauber = 20;
+    T.state.schaum = false;
+    T.state.dusche = null;
+    click(tab('bad'));
+    await wait(25);
+    click(taste('EINSCHÄUMEN'));
+    await wait(30);
+    click(taste('ABBRAUSEN'));
+    await wait(30);
+    if (!T.state.dusche) throw new Error('keine Dusche gestartet');
+    if (T.DATA.bella.sauber > 30) throw new Error('sofort sauber, ohne Abbrausen');
+    if (!T.state.schaum) throw new Error('Schaum schon weg, bevor gespült wurde');
+    const anteil = T.duscheAnteil();
+    if (!(anteil >= 0 && anteil < 1)) throw new Error('Fortschritt: ' + anteil);
+    await duscheDurchlaufen();
+    if (T.state.dusche) throw new Error('Dusche läuft weiter');
+    if (T.state.schaum) throw new Error('Schaum blieb');
+    if (T.DATA.bella.sauber < 60) throw new Error('nicht sauber: ' + T.DATA.bella.sauber);
+    return 'Schaum bleibt, bis die Hand fertig ist — dann sauber '
+         + Math.round(T.DATA.bella.sauber);
+  });
+
+  /* --- Eigene Grafiken --- */
+
+  await p.check('Jede Grafik hat einen Platz zum Austauschen', () => {
+    const noetig = ['szene_nische','szene_wanne','bella_steht','bella_liegt','hand_dusche'];
+    const fehlend = noetig.filter(n => !(n in T.BILDPLAETZE));
+    if (fehlend.length) throw new Error('kein Platz für: ' + fehlend.join(', '));
+    // Für jedes Rezept und jede Zutat muss es einen Platz geben.
+    T.REZEPTE.forEach(r => { if (!('gericht_' + r.id in T.BILDPLAETZE))
+      throw new Error('kein Platz für Gericht ' + r.id); });
+    Object.keys(T.ZUTATEN).forEach(z => { if (!('zutat_' + z in T.BILDPLAETZE))
+      throw new Error('kein Platz für Zutat ' + z); });
+    return Object.keys(T.BILDPLAETZE).length + ' Plätze';
+  });
+
+  await p.check('Ohne gelieferte Datei wird der Platzhalter gezeichnet', () => {
+    const belegt = Object.keys(T.BILDPLAETZE).filter(n => T.bildDa(n));
+    if (belegt.length) throw new Error('unerwartet geladen: ' + belegt.join(', '));
+    if (errors.length) throw new Error('Fehler beim Zeichnen: ' + errors[0]);
+    return 'alle Plätze frei, nichts bricht';
   });
 
   /* --- Schlafnische --- */
@@ -509,13 +602,19 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
 
   /* --- Optik, soweit ohne Browser prüfbar --- */
 
-  await p.check('Die Tageszeit färbt den Raum', () => {
+  await p.check('Es liegt kein Muster über den Zimmern', async () => {
+    // Die Tageszeit gibt es weiter als Angabe, aber nichts wird mehr
+    // über die Szene gelegt — das Raster hat jede Grafik zugedeckt.
     const mittag = T.tageszeit(new Date(2026, 0, 5, 12, 0));
     const nacht  = T.tageszeit(new Date(2026, 0, 5, 23, 0));
-    const tief   = T.tageszeit(new Date(2026, 0, 5, 3, 0));
-    if (mittag.dichte !== 0) throw new Error('Mittag ist eingefärbt');
-    if (!(nacht.dichte > 0 && tief.dichte > nacht.dichte)) throw new Error('Nacht nicht dunkler');
-    return 'Mittag klar, Nacht ' + nacht.dichte + '/16, tiefe Nacht ' + tief.dichte + '/16';
+    if (mittag.nacht) throw new Error('Mittag gilt als Nacht');
+    if (!nacht.nacht) throw new Error('23 Uhr gilt als Tag');
+    // Die Rasterdichte war der Überzug. Ist sie weg, wird nichts mehr
+    // darübergelegt; dass die Bühne wirklich sauber ist, prüft die
+    // Browser-Gegenprobe an den Bildpunkten.
+    if ('dichte' in mittag || 'deckung' in mittag)
+      throw new Error('das Raster steckt noch in der Tageszeit');
+    return 'Tageszeit bleibt als Angabe, der Überzug ist weg';
   });
 
   await p.check('Die Stimmung folgt der Laune', () => {

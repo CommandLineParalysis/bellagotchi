@@ -32,10 +32,12 @@ function leererVault(){
     outfit: { kleid: 'rosenrot', haar: 'beere' },
     zeiten: { einschlafen: '02:30', aufwachen: '10:30' },
     raeume: {
-      schlaf:  { wand:'flieder', wandmuster:'wand_punkte',   boden:'eiche', bodenmuster:'boden_diele' },
+      schlaf:  { wand:'flieder', wandmuster:'wand_punkte',   boden:'eiche', bodenmuster:'boden_diele',
+                 deko: ['kissen_a'] },
       kueche:  { wand:'butter',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese' },
       wohnen:  { wand:'minze',   wandmuster:'wand_streifen', boden:'eiche', bodenmuster:'boden_diele' },
-      bad:     { wand:'himmel',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese' },
+      bad:     { wand:'himmel',  wandmuster:'wand_karo',     boden:'perle', bodenmuster:'boden_fliese',
+                 deko: [] },
       schrank: { wand:'rosa',    wandmuster:'wand_herzen',   boden:'beere', bodenmuster:'boden_teppich' },
     },
     besitz: { kleider: ['rosenrot', 'himmelblau'], haare: ['beere', 'honig'],
@@ -64,6 +66,8 @@ const state = {
   auswahl: [],        // angeklickte Zutaten in der Küche
   schaum: false,      // Bella ist eingeschäumt und noch nicht abgebraust
   bestellwahl: [],    // was gerade in den Bestellkorb gelegt wurde
+  szene: null,        // läuft gerade eine Kochszene?
+  dusche: null,       // läuft gerade das Abbrausen?
   bildzaehler: 0,     // treibt die Zappel-Animation
 };
 
@@ -118,6 +122,7 @@ function adoptVault(saved){
       wandmuster: KACHELN[q.wandmuster] ? q.wandmuster : d.wandmuster,
       boden: BODENFARBEN[q.boden] ? q.boden : d.boden,
       bodenmuster: KACHELN[q.bodenmuster] ? q.bodenmuster : d.bodenmuster,
+      deko: (Array.isArray(q.deko) ? q.deko : (d.deko || [])).filter(x => KLEINKRAM[x]).slice(0, 3),
     };
   });
 
@@ -411,34 +416,19 @@ function ellipsenRing(ctx, s, mx, my, rx, ry, dicke, farbe){
   }
 }
 
-/* ---------- Tageszeit ---------- */
-
-const BAYER = [ [0,8,2,10], [12,4,14,6], [3,11,1,9], [15,7,13,5] ];
+/* ---------- Tageszeit ----------
+   Früher lag hier ein Rasterpunkt-Überzug über jedem Zimmer. Der war als
+   Nachtstimmung gedacht, las sich aber als Muster über dem Bild und hat
+   jede Grafik zugedeckt. Die Tageszeit bleibt als Angabe erhalten — sie
+   entscheidet, ob Fenster hell oder dunkel sind —, aber es wird nichts
+   mehr über die Szene gelegt. */
 
 function tageszeit(d){
   const h = (d || new Date()).getHours();
-  if (h >= 8  && h < 17) return { farbe:null,      dichte:0, deckung:0   };
-  if (h >= 5  && h < 8)  return { farbe:'#FF9E3D', dichte:5, deckung:.24 };
-  if (h >= 17 && h < 20) return { farbe:'#FF5C5C', dichte:6, deckung:.26 };
-  // Nicht 8 von 16: genau die Hälfte ergibt ein regelmäßiges Schachbrett,
-  // das sich über das Wandmuster legt und flimmert.
-  if (h >= 20 || h < 2)  return { farbe:'#2C2A82', dichte:6, deckung:.55 };
-  return { farbe:'#1B1040', dichte:7, deckung:.62 };
-}
-
-/* Gedeckt wird mit Rasterpunkten und halber Deckkraft zugleich. Nur
-   Punkte löschen die Hälfte des Bildes aus, nur Deckkraft sähe nach
-   Weichzeichner aus. */
-function maleDaemmerung(ctx, s, jetzt){
-  const t = tageszeit(jetzt);
-  if (!t.farbe || !t.dichte) return;
-  const vorher = ctx.globalAlpha;
-  ctx.globalAlpha = t.deckung;
-  ctx.fillStyle = t.farbe;
-  for (let y = 0; y < s.h; y++)
-    for (let x = 0; x < s.b; x++)
-      if (BAYER[y & 3][x & 3] < t.dichte) ctx.fillRect(x * s.mass, y * s.mass, s.mass, s.mass);
-  ctx.globalAlpha = vorher;
+  if (h >= 8  && h < 17) return { name:'tag',    nacht:false };
+  if (h >= 5  && h < 8)  return { name:'morgen', nacht:false };
+  if (h >= 17 && h < 20) return { name:'abend',  nacht:true  };
+  return { name:'nacht', nacht:true };
 }
 
 function raumFarben(raum){
@@ -457,9 +447,9 @@ function outfitPlaetze(){
 function zappel(){
   if (DATA.bella.schlaeft) return 0;
   const st = stimmung();
-  if (st === 'froh') return (state.bildzaehler % 20 < 10) ? -1 : 0;
+  if (st === 'froh') return (state.bildzaehler % 6 < 3) ? -1 : 0;
   if (st === 'traurig') return 0;
-  return (state.bildzaehler % 40 < 20) ? 0 : -1;
+  return (state.bildzaehler % 20 < 10) ? 0 : -1;
 }
 
 /* ---------- Die Zimmer mit Wand, Boden und Möbeln ----------
@@ -717,7 +707,7 @@ function maleSchlafnische(ctx, s){
 
   // Was aus der Post auf dem Bett liegt: rechts neben Bella, auf der
   // Matratze, nicht in der Luft.
-  const abgelegt = DATA.besitz.bett || [];
+  const abgelegt = DATA.raeume.schlaf.deko || [];
   abgelegt.slice(0, 3).forEach((id, i) => {
     const sp = KLEINKRAM[id];
     if (!sp) return;
@@ -803,6 +793,8 @@ function maleBadeszene(ctx, s){
     ellipse(ctx, s, mx, by + 17, 13, 4, '#F4F0F8');
   }
 
+  if (state.dusche) maleDusche(ctx, s, mx, by);
+
   /* Was auf dem Rand steht, muss dem Bogen der Wanne folgen — sonst
      schwebt die Kerze an der Wand. Die Höhe wird je Gegenstand aus der
      Ellipse ausgerechnet. */
@@ -810,7 +802,7 @@ function maleBadeszene(ctx, s){
     const t = 1 - ((x - mx) / rx) * ((x - mx) / rx);
     return t <= 0 ? my : my - Math.round(ry * Math.sqrt(t));
   };
-  const rand = ['sp_kerze'].concat((DATA.besitz.bad || []).slice(0, 3));
+  const rand = ['sp_kerze'].concat((DATA.raeume.bad.deko || []).slice(0, 3));
   rand.forEach((id, i) => {
     const sp = KLEINKRAM[id];
     if (!sp) return;
@@ -822,11 +814,180 @@ function maleBadeszene(ctx, s){
   });
 }
 
+/* Ein Wesen oder Gegenstand: liegt eine gelieferte Grafik für den Platz
+   vor, wird sie genommen; sonst der gezeichnete Platzhalter. */
+/* Dasselbe Bild, aber um einen ganzen Faktor vergrößert — für die
+   Kochszene, in der Zutat und Gericht die Hauptsache sind. */
+function maleGross(ctx, s, platz, sprite, x, y, faktor){
+  const gross = { mass: s.mass * faktor, b: s.b, h: s.h };
+  const gx = Math.round(x / faktor), gy = Math.round(y / faktor);
+  if (maleBild(ctx, gross, platz, gx, gy)) return;
+  if (sprite) maleSprite(ctx, sprite, gx, gy, gross.mass, null);
+}
+
+function maleFigur(ctx, s, platz, raster, x, y, plaetze){
+  if (maleBild(ctx, s, platz, x, y)) return;
+  if (Array.isArray(raster)) maleRaster(ctx, raster, x, y, s.mass, plaetze);
+  else if (raster) maleSprite(ctx, raster, x, y, s.mass, plaetze);
+}
+
+/* ---------- Kochen: drei Bilder nacheinander ----------
+   Erst die Zutaten auf der Arbeitsfläche mit dem Werkzeug, dann das
+   fertige Gericht, dann Bella beim Essen. Die Essensbewegung ist für
+   jedes Gericht dieselbe — sie zeigt das Essen, nicht das Gericht. */
+
+const KOCHSCHRITTE = [
+  { phase: 'zutaten', dauer: 2000 },
+  { phase: 'gericht', dauer: 1800 },
+  { phase: 'essen',   dauer: 2800 },
+];
+
+function kochszeneStarten(rezept){
+  state.szene = { art: 'kochen', rezept, schritt: 0, bis: Date.now() + KOCHSCHRITTE[0].dauer };
+}
+
+function kochszeneWeiter(){
+  const sz = state.szene;
+  if (!sz) return false;
+  sz.schritt++;
+  if (sz.schritt >= KOCHSCHRITTE.length){
+    state.szene = null;
+    return true;                       // fertig, das Gericht wirkt jetzt
+  }
+  sz.bis = Date.now() + KOCHSCHRITTE[sz.schritt].dauer;
+  return false;
+}
+
+function kochszenePhase(){
+  return state.szene ? KOCHSCHRITTE[state.szene.schritt].phase : null;
+}
+
+/* Der Rahmen wie auf einer aufgelegten Karte: heller Rand, dunkle
+   Fläche darin. */
+function maleKarte(ctx, s){
+  px(ctx, s, 0, 0, s.b, s.h, '#1A2018');
+  const r = 4;
+  px(ctx, s, r, r, s.b - 2 * r, s.h - 2 * r, '#F4EFE4');
+  px(ctx, s, r + 3, r + 3, s.b - 2 * r - 6, s.h - 2 * r - 6, '#2A3326');
+  return { x: r + 3, y: r + 3, b: s.b - 2 * r - 6, h: s.h - 2 * r - 6 };
+}
+
+function maleArbeitsflaeche(ctx, s, rezept){
+  const k = maleKarte(ctx, s);
+  if (!maleBild(ctx, s, 'szene_arbeitsflaeche', k.x, k.y)){
+    // Laub oben, Erde, davor der Tisch — der Aufbau aus der Vorlage.
+    px(ctx, s, k.x, k.y, k.b, Math.round(k.h * 0.22), '#1E3A22');
+    const laub = streuFolge('laub');
+    for (let i = 0; i < Math.round(k.b / 3); i++){
+      const lx = k.x + Math.floor(laub() * k.b);
+      const ly = k.y + Math.floor(laub() * k.h * 0.2);
+      px(ctx, s, lx, ly, 2, 2, laub() > .5 ? '#2F5C33' : '#3E7A42');
+    }
+    px(ctx, s, k.x, k.y + Math.round(k.h * 0.22), k.b, k.h, '#4A3A2C');
+    const ty = k.y + Math.round(k.h * 0.34);
+    px(ctx, s, k.x + 2, ty, k.b - 4, k.h - (ty - k.y) - 8, '#B9814A');
+    px(ctx, s, k.x + 2, ty, k.b - 4, 3, '#D8A467');
+    px(ctx, s, k.x + 2, ty + 3, k.b - 4, 1, '#8A5B2E');
+    for (let x = k.x + 4; x < k.x + k.b - 4; x += 7)
+      px(ctx, s, x, ty + 5, 1, k.h - (ty - k.y) - 14, '#A3703F');
+  }
+
+  // Die beiden Zutaten und das Werkzeug darauf, doppelt so groß — sie
+  // sind der Grund, warum man auf dieses Bild schaut.
+  const mitte = Math.round(s.b / 2), zy = Math.round(s.h * 0.50);
+  maleGross(ctx, s, 'brett', KOCHZEUG.brett, mitte - 30, zy + 16, 2);
+  maleGross(ctx, s, 'messer', KOCHZEUG.messer, mitte + 4, zy + 24, 2);
+  rezept.aus.forEach((z, i) => {
+    const platz = 'zutat_' + z;
+    maleGross(ctx, s, platz, KOCHZEUG[platz], mitte - 28 + i * 32, zy - 12, 2);
+  });
+  schrift(ctx, s, rezept.name.toUpperCase(), Math.round(s.h * 0.14));
+}
+
+function maleGerichtszene(ctx, s, rezept){
+  const k = maleKarte(ctx, s);
+  px(ctx, s, k.x, k.y, k.b, k.h, '#2A3326');
+  px(ctx, s, k.x, k.y + Math.round(k.h * 0.5), k.b, k.h, '#4A3A2C');
+  const mitte = Math.round(s.b / 2), ty = Math.round(s.h * 0.52);
+  px(ctx, s, k.x + 2, ty, k.b - 4, k.h - (ty - k.y) - 8, '#B9814A');
+  px(ctx, s, k.x + 2, ty, k.b - 4, 3, '#D8A467');
+
+  const platz = 'gericht_' + rezept.id;
+  if (bildDa(platz)){
+    maleGross(ctx, s, platz, null, mitte - 24, ty - 28, 2);
+  } else {
+    // Platzhalter: Teller mit einem Hügel in der Farbe des Rezepts.
+    maleGross(ctx, s, 'teller', KOCHZEUG.teller, mitte - 28, ty - 8, 2);
+    const farbe = zutatFarbe(rezept.aus[0]), farbe2 = zutatFarbe(rezept.aus[1]);
+    ellipse(ctx, s, mitte, ty - 5, 16, 8, farbe);
+    ellipse(ctx, s, mitte - 4, ty - 9, 9, 5, farbe2);
+    px(ctx, s, mitte - 8, ty - 12, 3, 2, '#FFFFFF');
+  }
+  schrift(ctx, s, rezept.name.toUpperCase(), Math.round(s.h * 0.14));
+}
+
+function maleEssszene(ctx, s, rezept){
+  const k = maleKarte(ctx, s);
+  px(ctx, s, k.x, k.y, k.b, k.h, '#3A2E3F');
+  px(ctx, s, k.x, k.y + Math.round(k.h * 0.62), k.b, k.h, '#5C4634');
+
+  const mitte = Math.round(s.b / 2);
+  const unten = k.y + Math.round(k.h * 0.62);
+  // Tisch vor Bella
+  px(ctx, s, k.x + 2, unten, k.b - 4, 6, '#B9814A');
+  px(ctx, s, k.x + 2, unten, k.b - 4, 2, '#D8A467');
+
+  /* Die Essensbewegung: Bella beugt sich um einen Pixel vor und der
+     Löffel wandert zum Mund. Vier Takte, für jedes Gericht gleich. */
+  const takt = Math.floor(Date.now() / 220) % 4;
+  const neigung = (takt === 1 || takt === 2) ? 1 : 0;
+  const plaetze = outfitPlaetze();
+  const bx = mitte - 12, by = unten - 30 + neigung;
+  maleFigur(ctx, s, 'bella_steht', BELLA_STEHT.slice(0, 20), bx, by, plaetze);
+  maleRaster(ctx, GESICHTER[takt === 2 ? 'satt' : 'froh'],
+             bx + GESICHT_X, by + GESICHT_Y, s.mass, plaetze);
+
+  maleFigur(ctx, s, 'teller', KOCHZEUG.teller, mitte - 14, unten - 4, null);
+  const farbe = zutatFarbe(rezept.aus[0]);
+  ellipse(ctx, s, mitte, unten - 2, 8, 4, farbe);
+
+  // Der Löffel: unten am Teller, oben am Mund.
+  const ly = takt >= 2 ? by + 12 : unten - 4;
+  px(ctx, s, mitte + 9, ly, 2, 6, '#D8D2E0');
+  ellipse(ctx, s, mitte + 10, ly - 1, 2, 2, '#EFEAF0');
+  if (takt === 3){
+    px(ctx, s, mitte - 16, by + 4, 2, 2, '#FFD166');
+    px(ctx, s, mitte + 16, by + 2, 2, 2, '#FF8AC4');
+  }
+  schrift(ctx, s, 'MHM!', Math.round(s.h * 0.14));
+}
+
+/* Ein kurzer Text in der Szene. Gezeichnet mit der Pixelschrift des
+   Browsers — in der Bühne gibt es kein DOM. */
+function schrift(ctx, s, text, y){
+  ctx.save();
+  ctx.font = (5 * s.mass) + "px 'Silkscreen', monospace";
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#2B1B3D';
+  ctx.fillText(text, (s.b / 2) * s.mass + s.mass, y * s.mass + s.mass);
+  ctx.fillStyle = '#F4EFE4';
+  ctx.fillText(text, (s.b / 2) * s.mass, y * s.mass);
+  ctx.restore();
+}
+
+function maleKochszene(ctx, s){
+  const sz = state.szene;
+  const phase = KOCHSCHRITTE[sz.schritt].phase;
+  if (phase === 'zutaten') maleArbeitsflaeche(ctx, s, sz.rezept);
+  else if (phase === 'gericht') maleGerichtszene(ctx, s, sz.rezept);
+  else maleEssszene(ctx, s, sz.rezept);
+}
+
 function maleRaum(ctx, s, jetzt){
+  if (state.szene && state.szene.art === 'kochen'){ maleKochszene(ctx, s); return; }
   if (state.raum === 'schlaf') maleSchlafnische(ctx, s);
   else if (state.raum === 'bad') maleBadeszene(ctx, s);
   else maleZimmer(ctx, s, state.raum);
-  maleDaemmerung(ctx, s, jetzt);
 }
 
 /* ---------- Erinnerungen ----------
@@ -970,7 +1131,9 @@ function sagen(text, dauer){
 function blaseZeigen(){
   const el = document.getElementById('blase');
   if (!el) return;
-  const an = state.blase && Date.now() < state.blaseBis;
+  // Während einer Szene stört die Blase nur — sie verdeckt das Bild,
+  // auf das man gerade schauen soll.
+  const an = !state.szene && state.blase && Date.now() < state.blaseBis;
   el.hidden = !an;
   if (an) el.textContent = state.blase;
 }
@@ -986,6 +1149,7 @@ function zeichnen(){
     c.width = bp; c.height = hp;
     c.style.width = bp + 'px';
     c.style.height = hp + 'px';
+    c.dataset.b = s.b; c.dataset.h = s.h; c.dataset.mass = s.mass;
     const buehne = document.getElementById('buehne');
     if (buehne) buehne.style.height = hp + 'px';
   }
@@ -1226,8 +1390,55 @@ async function kochen(r){
   r.aus.forEach(z => { DATA.vorrat[z] = Math.max(0, (DATA.vorrat[z] || 0) - 1); });
   if (!DATA.kochbuch.includes(r.id)) DATA.kochbuch.push(r.id);
   state.auswahl = [];
+  state.blase = null;
   fensterSchliessen();
-  await pflegen({ satt: r.satt, laune: r.laune, sagt: r.name + '! Danke.' });
+  kochszeneStarten(r);
+  await persist();
+  render();
+}
+
+/* Am Ende der Essensbewegung wirkt das Gericht. Vorher wäre Bella
+   satt, während sie noch die Zutaten vor sich liegen hat. */
+async function kochszeneAbschliessen(rezept){
+  await pflegen({ satt: rezept.satt, laune: rezept.laune, sagt: rezept.name + '! Danke.' });
+}
+
+/* ---------- Abbrausen ----------
+   Eine Hand mit dem Duschkopf fährt über Bella und wäscht den Schaum
+   weg. Erst danach zählt das Bad. */
+const DUSCHE_DAUER = 2200;
+
+function duscheStarten(){
+  state.dusche = { bis: Date.now() + DUSCHE_DAUER };
+}
+
+function duscheAnteil(){
+  if (!state.dusche) return 0;
+  const rest = state.dusche.bis - Date.now();
+  return Math.max(0, Math.min(1, 1 - rest / DUSCHE_DAUER));
+}
+
+function maleDusche(ctx, s, mx, kopfY){
+  const t = duscheAnteil();
+  // Die Hand wandert von links nach rechts und wieder zurück.
+  const schwung = Math.sin(t * Math.PI * 2.5);
+  const hx = Math.round(mx + schwung * 16);
+  const hy = Math.round(kopfY - 20);
+  maleFigur(ctx, s, 'hand_dusche', KOCHZEUG.hand_dusche, hx - 7, hy, null);
+
+  // Der Strahl: Tropfen in Spalten unter dem Kopf.
+  const tropfen = streuFolge('dusche');
+  for (let i = 0; i < 26; i++){
+    const dx = hx - 5 + Math.floor(tropfen() * 11);
+    const dy = hy + 14 + Math.floor(tropfen() * 26);
+    px(ctx, s, dx, dy, 1, 3, 'rgba(200,232,255,.85)');
+  }
+  // Schaumflocken, die weggespült werden.
+  for (let i = 0; i < 8; i++){
+    const fx = mx - 14 + Math.floor(tropfen() * 28);
+    const fy = kopfY + 6 + Math.round(t * 22) + Math.floor(tropfen() * 6);
+    ellipse(ctx, s, fx, fy, 2, 2, 'rgba(255,255,255,' + (1 - t).toFixed(2) + ')');
+  }
 }
 
 function fensterReden(){
@@ -1295,6 +1506,8 @@ function fensterEinstellungen(){
 
 function tastenFuer(raum){
   const b = DATA.bella;
+  if (state.szene) return [ taste('WEITER', szeneWeiter, 'haupt breit') ];
+  if (state.dusche) return [ taste('…', () => {}, 'aus breit') ];
   const schlaeft = b.schlaeft;
   const wach = text => () => { sagen(b.name + ' schläft. ' + text); render(); };
 
@@ -1345,10 +1558,7 @@ function tastenFuer(raum){
        der Wanne eine Knopfsammlung. */
     return [
       state.schaum
-        ? taste('ABBRAUSEN', async () => {
-            state.schaum = false;
-            await pflegen({ sauber: 46, laune: 9, sagt: 'Blitzeblank!' });
-          }, 'haupt')
+        ? taste('ABBRAUSEN', () => { duscheStarten(); render(); }, 'haupt')
         : taste('EINSCHÄUMEN', schlaeft ? wach('Morgen.') : async () => {
             state.schaum = true;
             await pflegen({ laune: 6, sagt: 'Kitzelt!' });
@@ -1364,6 +1574,29 @@ function tastenFuer(raum){
     ...AKTIVITAETEN.slice(2, 4).map(a => taste(a.name.toUpperCase(),
       schlaeft ? wach('Pst.') : () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
   ];
+}
+
+async function szeneWeiter(){
+  const sz = state.szene;
+  if (!sz) return;
+  const rezept = sz.rezept;
+  if (kochszeneWeiter()) await kochszeneAbschliessen(rezept);
+  render();
+}
+
+/* Läuft eine Szene oder die Dusche ab? Wird jeden Takt geprüft. */
+async function zeitgesteuertes(){
+  if (state.szene && Date.now() >= state.szene.bis){
+    await szeneWeiter();
+    return true;
+  }
+  if (state.dusche && Date.now() >= state.dusche.bis){
+    state.dusche = null;
+    state.schaum = false;
+    await pflegen({ sauber: 46, laune: 9, sagt: 'Blitzeblank!' });
+    return true;
+  }
+  return false;
 }
 
 function lieferText(){
@@ -1416,10 +1649,20 @@ function fensterEinrichten(){
   const r = DATA.raeume[state.raum];
   fensterOeffnen('EINRICHTEN — ' + RAUMNAME[state.raum].toUpperCase(), blatt => {
     if (state.raum === 'schlaf' || state.raum === 'bad'){
-      blatt.appendChild(h('div', { class:'leer', text:
-        state.raum === 'schlaf'
-          ? 'Die Nische richtest du über das ein, was aus der Post kommt — Kissen und Kuscheltiere liegen von selbst auf dem Bett.'
-          : 'Die Wanne richtest du über Badezusätze und Spielzeug aus der Post ein.' }));
+      const katalog = state.raum === 'schlaf' ? BETTZEUG : BADSPIELZEUG;
+      const besitz = state.raum === 'schlaf' ? DATA.besitz.bett : DATA.besitz.bad;
+      const wohin = state.raum === 'schlaf' ? 'aufs Bett' : 'auf den Wannenrand';
+      blatt.appendChild(waehler('HÖCHSTENS DREI ' + wohin.toUpperCase(),
+        besitz.map(id => ({ id, name: katalog[id].name })),
+        id => r.deko.includes(id),
+        async id => {
+          if (r.deko.includes(id)) r.deko = r.deko.filter(x => x !== id);
+          else if (r.deko.length < 3) r.deko = r.deko.concat(id);
+          else r.deko = r.deko.slice(1).concat(id);   // das Älteste weicht
+          await persist(); fensterEinrichten(); render();
+        }));
+      if (!besitz.length) blatt.appendChild(h('div', { class:'leer',
+        text:'Noch nichts da — kommt mit der Post.' }));
     }
     blatt.appendChild(waehler('TAPETE',
       DATA.besitz.waende.map(id => ({ id, name: WANDFARBEN[id].name, farbe: WANDFARBEN[id].farben[1] })),
@@ -1551,8 +1794,37 @@ function navBauen(){
 
 /* ---------- Start ---------- */
 
+/* Jede Zutat und jedes Gericht bekommt seinen Bildplatz, damit ein
+   neues Rezept nicht an zwei Stellen eingetragen werden muss. */
+function bildplaetzeAnmelden(){
+  Object.keys(ZUTATEN).forEach(z => bildplatzAnlegen('zutat_' + z));
+  REZEPTE.forEach(r => bildplatzAnlegen('gericht_' + r.id));
+  Object.keys(MOEBEL).forEach(m => bildplatzAnlegen('moebel_' + m));
+  Object.keys(KLEINKRAM).forEach(k => bildplatzAnlegen(k));
+}
+
+/* Nur für die Vorschau im Chat: alles freigeschaltet und der Vorrat
+   voll, damit sich jedes einzelne Stück ansehen lässt. In der Handy-App
+   ist diese Marke nicht gesetzt — dort kommt alles mit der Post. */
+function allesFreischalten(){
+  DATA.besitz.kleider  = Object.keys(KLEIDER);
+  DATA.besitz.haare    = Object.keys(HAARE);
+  DATA.besitz.waende   = Object.keys(WANDFARBEN);
+  DATA.besitz.boeden   = Object.keys(BODENFARBEN);
+  DATA.besitz.bett     = Object.keys(BETTZEUG);
+  DATA.besitz.bad      = Object.keys(BADSPIELZEUG);
+  DATA.besitz.zusaetze = Object.keys(BADEZUSAETZE);
+  Object.keys(ZUTATEN).forEach(z => { DATA.vorrat[z] = 9; });
+  DATA.kochbuch = REZEPTE.map(r => r.id);
+  if (!DATA.raeume.bad.deko.length) DATA.raeume.bad.deko = Object.keys(BADSPIELZEUG).slice(0, 2);
+}
+
 async function start(){
+  bildplaetzeAnmelden();
+  try { await bilderLaden(); } catch (e){ /* ohne gelieferte Bilder geht es auch */ }
   try { DATA = adoptVault(await Store.loadVault()); } catch (e){ DATA = leererVault(); }
+
+  if (typeof window !== 'undefined' && window.BELLAGOTCHI_VORSCHAU) allesFreischalten();
 
   const weg = (Date.now() - new Date(DATA.letzterBesuch)) / 60000;
   const minuten = standFortschreiben();
@@ -1589,19 +1861,25 @@ async function start(){
     });
   }
 
-  // Ein Takt je Sekunde: Zappeln, Sprechblase, und jede Minute die Werte.
+  /* Ein Takt alle 200 ms. Bewegung braucht das — mit einem Takt je
+     Sekunde ruckelte die Essensbewegung und die Dusche stand still.
+     Die Werte werden weiter nur einmal je Minute fortgeschrieben. */
+  const TAKT_MS = 200, TAKTE_JE_MINUTE = 300;
   let takt = 0;
-  setInterval(() => {
+  setInterval(async () => {
     state.bildzaehler++;
     takt++;
-    if (takt % 60 === 0){
+    if (takt % TAKTE_JE_MINUTE === 0){
       standFortschreiben();
       if (lieferungPruefen()) sagen('Die Lieferung ist angekommen!', 5000);
       persist();
+      render();
+      return;
     }
-    if (takt % 60 === 0 || state.bildzaehler % 10 === 0) render();
-    else { zeichnen(); blaseZeigen(); }
-  }, 1000);
+    if (await zeitgesteuertes()) return;
+    zeichnen();
+    blaseZeigen();
+  }, TAKT_MS);
 
   window.addEventListener('resize', () => zeichnen());
 }
