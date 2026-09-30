@@ -443,7 +443,7 @@ function schlafMinuten(von, bis){
 }
 
 /* Pro Stunde. Wach zehrt alles, Schlaf füllt das Ausgeruht wieder auf. */
-const ZEHRUNG = { satt: 3.2, sauber: 2.0, ausgeruht: 4.6 };
+const ZEHRUNG = { satt: 5, sauber: 2.0, ausgeruht: 4.6 };
 /* Im Dunkeln schläft sie besser. Gerechnet wird mit dem Licht, wie es
    gerade steht — wann im Nachhinein geschaltet wurde, weiß die App
    nicht, und dafür eine Schaltuhr mitzuschreiben wäre mehr Aufwand als
@@ -2247,10 +2247,23 @@ function maleKochszene(ctx, s){
   else maleGerichtszene(ctx, s, sz.rezept);
 }
 
+/* Welchen Maßstab ein Zimmer hat: Schlafzimmer und Bad sind
+   Nahansichten mit eigenem Ausschnitt, die übrigen zeigen das ganze
+   Zimmer. Das steht hier an einer Stelle, weil Zeichnen **und**
+   Antippen dieselbe Antwort brauchen — sonst landet ein Tipp in der
+   Nahansicht woanders, als das Bild zeigt, und die Zentimeter im
+   Platzierungs-Modus stimmen auch nicht. Genau das war der Fall. */
+function raumMasse(raum, s){
+  const b = s || buehneMasse();
+  if (raum === 'schlaf') return szenenMasse(b, SZENE_CM.nische);
+  if (raum === 'bad') return szenenMasse(b, SZENE_CM.wanne);
+  return b;
+}
+
 function maleRaum(ctx, s, jetzt){
   if (state.szene && state.szene.art === 'kochen'){ maleKochszene(ctx, s); return; }
-  if (state.raum === 'schlaf') maleSchlafnische(ctx, szenenMasse(s, SZENE_CM.nische));
-  else if (state.raum === 'bad') maleBadeszene(ctx, szenenMasse(s, SZENE_CM.wanne));
+  if (state.raum === 'schlaf') maleSchlafnische(ctx, raumMasse('schlaf', s));
+  else if (state.raum === 'bad') maleBadeszene(ctx, raumMasse('bad', s));
   else maleZimmer(ctx, s, state.raum);
 }
 
@@ -2641,7 +2654,10 @@ async function postAnnehmen(i){
 
 /* ---------- Fenster ---------- */
 
-function fensterOeffnen(titel, aufbau){
+/* `art` ist normalerweise leer: dann liegt das Fenster mittig über
+   allem. Mit 'unten' wird daraus eine Leiste unter der Bühne — dafür
+   gibt es genau einen Grund, und der steht bei fensterPlatzieren. */
+function fensterOeffnen(titel, aufbau, art){
   const modal = document.getElementById('modal');
   const blatt = document.getElementById('modalblatt');
   blatt.textContent = '';
@@ -2649,6 +2665,16 @@ function fensterOeffnen(titel, aufbau){
     h('h2', { text: titel }),
     h('button', { class:'schliessen', text:'X', 'aria-label':'Schließen', onclick: fensterSchliessen })));
   aufbau(blatt);
+  modal.className = 'modal' + (art ? ' ' + art : '');
+  /* Die Leiste beginnt genau da, wo die Bühne aufhört — gemessen, nicht
+     geschätzt: die Bühnenhöhe hängt am Gerät. */
+  if (art === 'unten'){
+    const b = document.getElementById('buehne');
+    const kante = b && b.getBoundingClientRect ? Math.round(b.getBoundingClientRect().bottom) : 0;
+    modal.style.top = kante + 'px';
+  } else {
+    modal.style.top = '';
+  }
   modal.hidden = false;
   modal.onclick = ev => { if (ev.target === modal) fensterSchliessen(); };
 }
@@ -2657,7 +2683,10 @@ function fensterSchliessen(){
   state.offen = null;
   state.platzieren = null;
   state.auswahl = [];
-  document.getElementById('modal').hidden = true;
+  const modal = document.getElementById('modal');
+  modal.hidden = true;
+  modal.className = 'modal';
+  modal.style.top = '';
   render();
 }
 
@@ -3509,17 +3538,21 @@ async function platzSetzen(raum, name, x, unten){
   render();
 }
 
-function buehneAngetippt(ev){
+async function buehneAngetippt(ev){
   if (!state.platzieren) return;
   const c = document.getElementById('bild');
   const kasten = c.getBoundingClientRect();
-  const s = buehneMasse();
+  // Im selben Maßstab, in dem das Zimmer gezeichnet ist — in den
+  // Nahansichten ist das nicht der des ganzen Zimmers.
+  const s = raumMasse(state.raum);
   // Vom Bildschirmpunkt zum Zentimeter.
   const xCm = (ev.clientX - kasten.left) / kasten.width * s.b;
   const yCm = (ev.clientY - kasten.top) / kasten.height * s.h;
   const name = state.platzieren.was;
   const b = breiteCm(name, MOEBEL[name] || null);
-  platzSetzen(state.raum, name, xCm - b / 2, yCm);
+  await platzSetzen(state.raum, name, xCm - b / 2, yCm);
+  // Die angezeigten Zentimeter sollen mitgehen, nicht stehenbleiben.
+  if (state.offen === 'platzieren') fensterPlatzieren();
 }
 
 function fensterPlatzieren(){
@@ -3530,20 +3563,24 @@ function fensterPlatzieren(){
     fensterOeffnen('GENAU PLATZIEREN', blatt => {
       blatt.appendChild(h('div', { class:'leer',
         text:'In diesem Raum steht nichts, was sich verschieben ließe.' }));
-    });
+    }, 'unten');
     return;
   }
   if (!state.platzieren) state.platzieren = { was: dinge[0].name };
 
+  /* Als Leiste unter der Bühne, nicht als Fenster darüber: man setzt
+     Gegenstände, indem man ins Zimmer tippt — verdeckt das Fenster die
+     Wohnung, sieht man weder, was man verschiebt, noch kommt der Tipper
+     überhaupt an. Genau daran ist dieser Modus vorher gescheitert. */
   fensterOeffnen('GENAU PLATZIEREN', blatt => {
     blatt.appendChild(h('div', { class:'leer',
-      text:'Gegenstand wählen, dann auf das Bild tippen — dorthin kommt seine Unterkante.' }));
+      text:'Gegenstand wählen, dann ins Zimmer tippen — dorthin kommt seine Unterkante.' }));
     blatt.appendChild(waehler('WAS',
       dinge.map(d => ({ id: d.name, name: d.name })),
       id => state.platzieren.was === id,
       id => { state.platzieren = { was: id }; fensterPlatzieren(); render(); }));
 
-    const s = buehneMasse();
+    const s = raumMasse(raum);
     const was = state.platzieren.was;
     const p = platzVon(raum, was, s);
     const istZone = zoneDa(was);
@@ -3552,13 +3589,16 @@ function fensterPlatzieren(){
       h('div', { class:'blockkopf', id:'platzwert',
                  text: 'x ' + p.x.toFixed(1) + ' cm · unten ' + p.unten.toFixed(1) + ' cm'
                      + (istZone ? ' · ' + masse.b.toFixed(0) + ' × ' + masse.h.toFixed(0) + ' cm' : '') }),
-      h('div', { class:'zeile' },
-        ...[['←', -1, 0], ['→', 1, 0], ['↑', 0, -1], ['↓', 0, 1]].map(([z, dx, dy]) =>
-          h('button', { class:'taste', text: z, 'data-schieb': z, onclick: async () => {
-            const jetzt = platzVon(raum, was, buehneMasse());
-            await platzSetzen(raum, was, jetzt.x + dx, jetzt.unten + dy);
-            fensterPlatzieren();
-          } })))));
+      /* Zwei mal zwei statt vier nebeneinander: vier Knöpfe brauchen
+         mehr Breite, als die Leiste hat, und brachen sonst 3 + 1 um. */
+      ...[[['←', -1, 0], ['→', 1, 0]], [['↑', 0, -1], ['↓', 0, 1]]].map(reihe =>
+        h('div', { class:'zeile' },
+          ...reihe.map(([z, dx, dy]) =>
+            h('button', { class:'taste', text: z, 'data-schieb': z, onclick: async () => {
+              const jetzt = platzVon(raum, was, raumMasse(raum));
+              await platzSetzen(raum, was, jetzt.x + dx, jetzt.unten + dy);
+              fensterPlatzieren();
+            } }))))));
 
     /* Eine Zone hat außer der Stelle auch eine Größe. Die braucht nur,
        wer Bett oder Wanne selbst gemalt hat — deshalb stehen diese
@@ -3566,14 +3606,14 @@ function fensterPlatzieren(){
     if (istZone){
       blatt.appendChild(h('div', { class:'block' },
         h('div', { class:'blockkopf', text:'GRÖSSE DER FLÄCHE' }),
-        h('div', { class:'zeile' },
-          ...[['BREITER', 2, 0], ['SCHMALER', -2, 0], ['HÖHER', 0, 2], ['FLACHER', 0, -2]]
-            .map(([z, db, dh]) =>
+        ...[[['BREITER', 2, 0], ['SCHMALER', -2, 0]], [['HÖHER', 0, 2], ['FLACHER', 0, -2]]]
+          .map(reihe => h('div', { class:'zeile' },
+            ...reihe.map(([z, db, dh]) =>
               h('button', { class:'taste', text: z, 'data-groesse': z, onclick: async () => {
-                const jetzt = zone(raum, was, zonenVorgabe(raum, was, buehneMasse()));
+                const jetzt = zone(raum, was, zonenVorgabe(raum, was, raumMasse(raum)));
                 await zoneSetzen(was, jetzt.b + db, jetzt.h + dh);
                 fensterPlatzieren();
-              } })))));
+              } }))))));
     }
 
     blatt.appendChild(h('div', { class:'zeile' },
@@ -3589,7 +3629,7 @@ function fensterPlatzieren(){
       } })));
     blatt.appendChild(h('pre', { class:'ausgabe', id:'platzausgabe',
       text:'Hier erscheinen die Zahlen zum Weitergeben.' }));
-  });
+  }, 'unten');
 }
 
 function fensterAnziehen(){

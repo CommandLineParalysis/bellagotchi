@@ -43,7 +43,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'musikStand','musikWaehlen','musikGutschrift','musikHalten','musikAus',
                      'musikLaeuft','musikSpielen','tanzt','tanzLage','MUSIK_LAUNE','AKTIVITAETEN',
                      'AUSSCHNITT_MIN_CM','BELLA_CM','maleBellaStehend',
-                     'SATT_GERICHT','SATT_SNACK','LAUNE_GERICHT','LAUNE_SNACK','launeWuerfeln']);
+                     'SATT_GERICHT','SATT_SNACK','LAUNE_GERICHT','LAUNE_SNACK','launeWuerfeln',
+                     'ZEHRUNG','fensterPlatzieren','fensterSchliessen','buehneAngetippt',
+                     'fensterEinstellungen']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -263,6 +265,55 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     await wait(25);
     if (T.DATA.bella.satt <= 30) throw new Error('am Ende nicht satt');
     return 'zwei Karten, dann Essen in der Küche';
+  });
+
+  await p.check('Der Hunger steigt mit 5 Punkten je Stunde', () => {
+    if (T.ZEHRUNG.satt !== 5) throw new Error('eingetragen sind ' + T.ZEHRUNG.satt);
+    const b = T.DATA.bella;
+    b.satt = 100; b.sauber = 100; b.ausgeruht = 100; b.laune = 100;
+    T.DATA.zeiten.einschlafen = '02:30'; T.DATA.zeiten.aufwachen = '10:30';
+    // Sechs wache Stunden am Nachmittag, damit kein Schlaf dazwischenfunkt.
+    T.DATA.stand = new Date(2026, 0, 5, 14, 0).toISOString();
+    T.standFortschreiben(new Date(2026, 0, 5, 20, 0));
+    const weg = 100 - b.satt;
+    if (Math.abs(weg - 30) > 0.5)
+      throw new Error('in sechs Stunden fehlen ' + weg.toFixed(1) + ' statt 30 Punkte');
+    /* Zum Einordnen: eine Mahlzeit füllt 80 Punkte, das trägt damit
+       sechzehn Stunden. */
+    const traegt = T.SATT_GERICHT / T.ZEHRUNG.satt;
+    if (Math.abs(traegt - 16) > 0.1) throw new Error('eine Mahlzeit trägt ' + traegt + ' h');
+    return '6 h → ' + weg.toFixed(0) + ' Punkte weniger · eine Mahlzeit trägt '
+         + traegt.toFixed(0) + ' Stunden';
+  });
+
+  await p.check('Der Platzierungs-Modus verdeckt die Wohnung nicht', async () => {
+    await mitBella('wohnen');
+    T.fensterPlatzieren();
+    await wait(25);
+    const modal = $('#modal');
+    if (modal.hidden) throw new Error('die Leiste ist gar nicht offen');
+    /* Als Leiste unter der Bühne statt als Fenster darüber — sonst sieht
+       man weder, was man verschiebt, noch kommt der Tipper ins Zimmer
+       an. Wie weit sie wirklich reicht, misst die Chromium-Prüfung;
+       hier steht, dass sie überhaupt als Leiste geöffnet wird. */
+    if (!modal.classList.contains('unten'))
+      throw new Error('die Leiste liegt über der Bühne: ' + modal.className);
+    if (!modal.style.top)
+      throw new Error('die Oberkante hängt nicht an der Bühnenunterkante');
+    if (!T.state.platzieren) throw new Error('es ist gar nichts zum Setzen gewählt');
+    T.fensterSchliessen();
+    await wait(20);
+    if (modal.classList.contains('unten')) throw new Error('die Klasse bleibt hängen');
+    if (modal.style.top) throw new Error('die Oberkante bleibt hängen');
+    if (T.state.platzieren) throw new Error('der Modus bleibt an');
+    // Ein gewöhnliches Fenster liegt weiter mittig über allem.
+    T.fensterEinstellungen();
+    await wait(20);
+    if (modal.className !== 'modal')
+      throw new Error('die Einstellungen kommen als Leiste: ' + modal.className);
+    T.fensterSchliessen();
+    await wait(20);
+    return 'Leiste unten, gewöhnliche Fenster weiter mittig';
   });
 
   /* --- Was Essen bringt --- */
@@ -1739,26 +1790,36 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     T.DATA.zeiten.aufwachen = '10:30';
     const jetzt = new Date(2026, 0, 5, 14, 0);
     const b = T.DATA.bella;
-    b.satt = 90; b.sauber = 90;
+    b.satt = 100; b.sauber = 90;
+    /* Die Vorbedingung ausdrücklich prüfen, statt sie zu hoffen: bei
+       voller Sättigung muss der Hunger rechnerisch in ihre Nacht fallen,
+       sonst prüft die Zeile darunter nichts mehr. Genau das ist beim
+       schnelleren Zehren passiert — bei 90 fiel er plötzlich um 2:24
+       und damit knapp vor das Schlaffenster. */
+    const roh = T.faelligAb(jetzt, 'satt', b.satt, T.ERINNERUNG.hunger.schwelle);
+    if (!roh || !T.istSchlafzeit(roh))
+      throw new Error('der Hunger fällt um ' + roh.getHours() + ':'
+                    + String(roh.getMinutes()).padStart(2, '0') + ', nicht in ihre Nacht');
     const voll = T.erinnerungsPlan(jetzt);
     b.satt = 40; b.sauber = 90;
     const hungrig = T.erinnerungsPlan(jetzt);
     const wann = art => { const e = hungrig.find(x => x.id === T.ERINNERUNG[art].id); return e && e.wann; };
     const wannVoll = voll.find(x => x.id === T.ERINNERUNG.hunger.id);
     if (!wann('hunger')) throw new Error('keine Hungermeldung');
-    if (!wannVoll) throw new Error('bei 90 gar keine Meldung');
-    if (!(wann('hunger') < wannVoll.wann)) throw new Error('bei 40 satt nicht früher als bei 90');
-    // Bei vollen Werten fiele der Hunger in ihre Nacht — die Meldung darf
-    // deshalb nicht wegfallen, sondern rutscht hinter das Aufwachen.
+    if (!wannVoll) throw new Error('bei voller Sättigung gar keine Meldung');
+    if (!(wann('hunger') < wannVoll.wann)) throw new Error('bei 40 satt nicht früher als bei 100');
+    // Die Meldung darf nicht wegfallen, sondern rutscht hinter das Aufwachen.
     if (wannVoll.wann.getHours() !== 10 || wannVoll.wann.getMinutes() !== 50)
       throw new Error('verschobene Meldung um ' + wannVoll.wann.getHours() + ':' + wannVoll.wann.getMinutes());
-    return 'satt 40 → ' + wann('hunger').getHours() + ' Uhr, satt 90 → hinter dem Aufwachen um 10:50';
+    return 'satt 40 → ' + wann('hunger').getHours() + ' Uhr, satt 100 → hinter dem Aufwachen um 10:50';
   });
 
   await p.check('In Bellas Nacht klingelt nichts', () => {
     const b = T.DATA.bella;
     // Werte so, dass der Hunger mitten in die Nacht fiele.
-    b.satt = 28 + 3.2 * 6;        // in rund sechs Stunden unter der Schwelle
+    // In rund sechs Stunden unter der Schwelle — gerechnet mit der
+    // wirklichen Zehrung, nicht mit einer abgeschriebenen Zahl.
+    b.satt = Math.min(100, T.ERINNERUNG.hunger.schwelle + T.ZEHRUNG.satt * 6);
     b.sauber = 100;
     const plan = T.erinnerungsPlan(new Date(2026, 0, 5, 21, 0));  // + 6 h = 03:00
     // Die Meldung fällt nicht weg — sie rutscht aus der Nacht heraus.
