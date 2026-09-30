@@ -247,22 +247,38 @@ const ZUTATEN = {
   ei:       { name:'Ei',       zeichen:'ei' },
 };
 
+/* ---------- Was Essen bringt ----------
+   Eine gekochte Mahlzeit füllt 80 Punkte des Sättigungsbalkens, ein
+   Snack 40 — gleich viel, gleich welches Gericht. Deshalb steht die Zahl
+   hier und nicht bei jedem Rezept: eine Regel, kein Tabellenwerk.
+
+   Wie viel Laune dazukommt, wird bei jedem Essen neu gewürfelt. Feste
+   Werte kannte man nach dem dritten Mal auswendig; so ist jede Mahlzeit
+   ein kleines bisschen anders. */
+const SATT_GERICHT = 80, SATT_SNACK = 40;
+const LAUNE_GERICHT = { von: 4, bis: 16 };
+const LAUNE_SNACK   = { von: 3, bis: 13 };
+
+function launeWuerfeln(spanne){
+  return spanne.von + Math.round(Math.random() * (spanne.bis - spanne.von));
+}
+
 const REZEPTE = [
-  { id:'pfannkuchen', name:'Pfannkuchen', aus:['mehl','ei'],        satt:34, laune:6 },
-  { id:'milchreis',   name:'Milchreis',   aus:['milch','mehl'],     satt:30, laune:5 },
-  { id:'shake',       name:'Erdbeershake',aus:['erdbeere','milch'], satt:22, laune:12 },
-  { id:'marmelade',   name:'Marmelade',   aus:['erdbeere','honig'], satt:18, laune:10 },
-  { id:'muffin',      name:'Beerenmuffin',aus:['beere','mehl'],     satt:28, laune:11 },
-  { id:'honigbrot',   name:'Honigbrot',   aus:['honig','mehl'],     satt:26, laune:7 },
-  { id:'ruehrei',     name:'Rührei',      aus:['ei','milch'],       satt:32, laune:4 },
-  { id:'beerentraum', name:'Beerentraum', aus:['beere','erdbeere'], satt:20, laune:14 },
-  { id:'kuchen',      name:'Honigkuchen', aus:['honig','ei'],       satt:30, laune:13 },
-  { id:'beerenmilch', name:'Beerenmilch', aus:['beere','milch'],    satt:19, laune:9 },
-  { id:'ruehrkuchen', name:'Rührkuchen',  aus:['ei','erdbeere'],    satt:27, laune:10 },
-  { id:'honigmilch',  name:'Honigmilch',  aus:['honig','milch'],    satt:16, laune:15 },
-  { id:'erdbeerkeks', name:'Erdbeerkeks', aus:['erdbeere','mehl'],  satt:25, laune:12 },
-  { id:'beerenhonig', name:'Beerenhonig', aus:['honig','beere'],    satt:17, laune:16 },
-  { id:'beerenomlett',name:'Beerenomlett',aus:['beere','ei'],       satt:29, laune:8 },
+  { id:'pfannkuchen', name:'Pfannkuchen', aus:['mehl','ei'] },
+  { id:'milchreis',   name:'Milchreis',   aus:['milch','mehl'] },
+  { id:'shake',       name:'Erdbeershake',aus:['erdbeere','milch'] },
+  { id:'marmelade',   name:'Marmelade',   aus:['erdbeere','honig'] },
+  { id:'muffin',      name:'Beerenmuffin',aus:['beere','mehl'] },
+  { id:'honigbrot',   name:'Honigbrot',   aus:['honig','mehl'] },
+  { id:'ruehrei',     name:'Rührei',      aus:['ei','milch'] },
+  { id:'beerentraum', name:'Beerentraum', aus:['beere','erdbeere'] },
+  { id:'kuchen',      name:'Honigkuchen', aus:['honig','ei'] },
+  { id:'beerenmilch', name:'Beerenmilch', aus:['beere','milch'] },
+  { id:'ruehrkuchen', name:'Rührkuchen',  aus:['ei','erdbeere'] },
+  { id:'honigmilch',  name:'Honigmilch',  aus:['honig','milch'] },
+  { id:'erdbeerkeks', name:'Erdbeerkeks', aus:['erdbeere','mehl'] },
+  { id:'beerenhonig', name:'Beerenhonig', aus:['honig','beere'] },
+  { id:'beerenomlett',name:'Beerenomlett',aus:['beere','ei'] },
 ];
 
 /* Bestellt wird kostenlos; geliefert wird am nächsten Tag. Das ist die
@@ -340,14 +356,14 @@ const BADEZUSAETZE = {
    Sie kommen ausschließlich mit der Post; das ist der Unterschied zur
    Küche, wo man aus Zutaten etwas macht. */
 const SNACKS = {
-  keks:      { name:'Keks',       satt:12, laune:6,  farbe:'#D8A467' },
-  schoki:    { name:'Schokolade', satt:14, laune:10, farbe:'#8A5B2E' },
-  apfel:     { name:'Apfel',      satt:10, laune:4,  farbe:'#FF5C5C' },
-  brezel:    { name:'Brezel',     satt:15, laune:5,  farbe:'#C98B5A' },
-  lutscher:  { name:'Lutscher',   satt:6,  laune:13, farbe:'#FF4FA3' },
-  joghurt:   { name:'Joghurt',    satt:13, laune:7,  farbe:'#BEE6FF' },
-  nuesse:    { name:'Nüsse',      satt:16, laune:3,  farbe:'#A3703F' },
-  gummibaer: { name:'Gummibären', satt:8,  laune:12, farbe:'#4BE38A' },
+  keks:      { name:'Keks',       farbe:'#D8A467' },
+  schoki:    { name:'Schokolade', farbe:'#8A5B2E' },
+  apfel:     { name:'Apfel',      farbe:'#FF5C5C' },
+  brezel:    { name:'Brezel',     farbe:'#C98B5A' },
+  lutscher:  { name:'Lutscher',   farbe:'#FF4FA3' },
+  joghurt:   { name:'Joghurt',    farbe:'#BEE6FF' },
+  nuesse:    { name:'Nüsse',      farbe:'#A3703F' },
+  gummibaer: { name:'Gummibären', farbe:'#4BE38A' },
 };
 
 const BADSPIELZEUG = {
@@ -3158,7 +3174,8 @@ async function zeitgesteuertes(){
   if (state.essen && Date.now() >= state.essen.bis){
     const r = state.essen.rezept;
     state.essen = null;
-    await pflegen({ satt: r.satt, laune: r.laune, sagt: r.name + '! Danke.' });
+    await pflegen({ satt: SATT_GERICHT, laune: launeWuerfeln(LAUNE_GERICHT),
+                    sagt: r.name + '! Danke.' });
     return true;
   }
   if (state.dusche && Date.now() >= state.dusche.bis){
@@ -3665,7 +3682,8 @@ async function snackEssen(id){
   if (!sn || !(DATA.snacks[id] > 0)) return;
   DATA.snacks[id]--;
   fensterSchliessen();
-  await pflegen({ satt: sn.satt, laune: sn.laune, sagt: sn.name + '! Mmh.' });
+  await pflegen({ satt: SATT_SNACK, laune: launeWuerfeln(LAUNE_SNACK),
+                  sagt: sn.name + '! Mmh.' });
 }
 
 function fensterBestellen(){

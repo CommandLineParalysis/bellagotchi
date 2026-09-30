@@ -42,7 +42,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'WETTER','TAGESZEITEN','wetterJetzt','ausblickPlatz','zoneGilt',
                      'musikStand','musikWaehlen','musikGutschrift','musikHalten','musikAus',
                      'musikLaeuft','musikSpielen','tanzt','tanzLage','MUSIK_LAUNE','AKTIVITAETEN',
-                     'AUSSCHNITT_MIN_CM','BELLA_CM','maleBellaStehend']);
+                     'AUSSCHNITT_MIN_CM','BELLA_CM','maleBellaStehend',
+                     'SATT_GERICHT','SATT_SNACK','LAUNE_GERICHT','LAUNE_SNACK','launeWuerfeln']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -262,6 +263,97 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     await wait(25);
     if (T.DATA.bella.satt <= 30) throw new Error('am Ende nicht satt');
     return 'zwei Karten, dann Essen in der Küche';
+  });
+
+  /* --- Was Essen bringt --- */
+
+  /* Eine Mahlzeit anzustoßen, ohne jedes Mal durch Kochfenster und
+     Szene zu klicken: das Essen steht als Zustand da und wird von
+     `zeitgesteuertes` abgeschlossen. Genau der Weg, den auch das Spiel
+     nimmt. */
+  const gerichtEssen = async (rezept, vorher) => {
+    T.state.szene = null;
+    T.DATA.bella.satt = vorher;
+    T.DATA.bella.laune = 50;
+    T.state.essen = { bis: Date.now() - 1, rezept };
+    await T.zeitgesteuertes();
+    await wait(10);
+    return { satt: T.DATA.bella.satt - vorher, laune: T.DATA.bella.laune - 50 };
+  };
+  const snackEssen = async (id, vorher) => {
+    T.DATA.snacks[id] = 2;
+    T.DATA.bella.satt = vorher;
+    T.DATA.bella.laune = 50;
+    await T.snackEssen(id);
+    await wait(10);
+    return { satt: T.DATA.bella.satt - vorher, laune: T.DATA.bella.laune - 50 };
+  };
+
+  await p.check('Eine Mahlzeit füllt 80, ein Snack 40', async () => {
+    const mahlzeit = await gerichtEssen(T.REZEPTE[0], 10);
+    const snack = await snackEssen('keks', 10);
+    if (mahlzeit.satt !== 80) throw new Error('die Mahlzeit füllt ' + mahlzeit.satt);
+    if (snack.satt !== 40) throw new Error('der Snack füllt ' + snack.satt);
+    /* Die Zahl steht an einer Stelle, nicht bei jedem Rezept — sonst
+       gäbe es zwei Wahrheiten. */
+    if (T.SATT_GERICHT !== 80 || T.SATT_SNACK !== 40)
+      throw new Error('die Zahlen im Code: ' + T.SATT_GERICHT + '/' + T.SATT_SNACK);
+    return '+' + mahlzeit.satt + ' und +' + snack.satt + ' Punkte';
+  });
+
+  await p.check('Jedes Gericht und jeder Snack füllt gleich viel', async () => {
+    const abweichend = [];
+    for (const r of T.REZEPTE){
+      const e = await gerichtEssen(r, 10);
+      if (e.satt !== T.SATT_GERICHT) abweichend.push(r.id + '=' + e.satt);
+    }
+    for (const id of Object.keys(T.SNACKS)){
+      const e = await snackEssen(id, 10);
+      if (e.satt !== T.SATT_SNACK) abweichend.push(id + '=' + e.satt);
+    }
+    if (abweichend.length) throw new Error('fällt aus der Reihe: ' + abweichend.join(', '));
+    /* Kein Rezept und kein Snack trägt noch eine eigene Zahl mit sich —
+       die läge sonst herum und würde irgendwann wieder benutzt. */
+    const reste = T.REZEPTE.filter(r => 'satt' in r || 'laune' in r).map(r => r.id)
+      .concat(Object.entries(T.SNACKS).filter(([, s]) => 'satt' in s || 'laune' in s).map(([k]) => k));
+    if (reste.length) throw new Error('trägt noch eigene Werte: ' + reste.join(', '));
+    return T.REZEPTE.length + ' Gerichte je +' + T.SATT_GERICHT + ', '
+         + Object.keys(T.SNACKS).length + ' Snacks je +' + T.SATT_SNACK;
+  });
+
+  await p.check('Über 100 geht es nicht', async () => {
+    const satt = await gerichtEssen(T.REZEPTE[0], 60);
+    if (T.DATA.bella.satt !== 100)
+      throw new Error('bei 60 + 80 steht sie auf ' + T.DATA.bella.satt);
+    if (satt.satt !== 40) throw new Error('gutgeschrieben wurden ' + satt.satt);
+    return '60 + 80 → 100, der Rest verfällt';
+  });
+
+  await p.check('Die Laune wechselt bei jedem Essen durch', async () => {
+    const gesammelt = { gericht: [], snack: [] };
+    for (let i = 0; i < 30; i++){
+      gesammelt.gericht.push((await gerichtEssen(T.REZEPTE[i % T.REZEPTE.length], 10)).laune);
+      gesammelt.snack.push((await snackEssen('keks', 10)).laune);
+    }
+    const pruefe = (art, werte, spanne) => {
+      const raus = werte.filter(v => v < spanne.von || v > spanne.bis);
+      if (raus.length) throw new Error(art + ' außerhalb ' + spanne.von + '–' + spanne.bis + ': ' + raus[0]);
+      const wieViele = new Set(werte).size;
+      /* Wären die Werte fest, käme bei 30 Mahlzeiten immer dasselbe
+         heraus — bei Gerichten höchstens so viele wie Rezepte. */
+      if (wieViele < 4) throw new Error(art + ': nur ' + wieViele + ' verschiedene Werte');
+      return wieViele;
+    };
+    const a = pruefe('Gericht', gesammelt.gericht, T.LAUNE_GERICHT);
+    const b2 = pruefe('Snack', gesammelt.snack, T.LAUNE_SNACK);
+    /* Und dasselbe Gericht bringt nicht immer dasselbe: das war der
+       Unterschied zur alten Tabelle. */
+    const einGericht = [];
+    for (let i = 0; i < 25; i++) einGericht.push((await gerichtEssen(T.REZEPTE[0], 10)).laune);
+    if (new Set(einGericht).size < 3)
+      throw new Error('dasselbe Gericht bringt immer ' + einGericht[0]);
+    return 'Gerichte ' + T.LAUNE_GERICHT.von + '–' + T.LAUNE_GERICHT.bis + ' (' + a
+         + ' Werte), Snacks ' + T.LAUNE_SNACK.von + '–' + T.LAUNE_SNACK.bis + ' (' + b2 + ')';
   });
 
   /* --- Reden --- */
