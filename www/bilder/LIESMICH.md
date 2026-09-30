@@ -64,7 +64,7 @@ Stimmt die Höhe der Datei nicht mit der Eintragung überein, sagt
 | `fenster` | 110 cm | 90 cm | 616 px hoch × 504 px breit |
 | `lampe` | 150 cm | 40 cm | 840 px hoch × 224 px breit |
 | `kuehlschrank` | 170 cm | 60 cm | 952 px hoch × 336 px breit |
-| `bella` | 170 cm | 46 cm | 952 px hoch × 258 px breit |
+| `bella` | 130 cm | 35 cm | 728 px hoch × 196 px breit |
 | `regal` | 180 cm | 90 cm | 1008 px hoch × 504 px breit |
 | `schrank` | 190 cm | 110 cm | 1064 px hoch × 616 px breit |
 
@@ -211,18 +211,22 @@ Vorlage, dann triffst du auf den Punkt.
 
 ### Die Flächen
 
+Bella ist **1,30 m** groß. Alles andere im Zimmer behält seine
+Zentimeter — nur sie ist kleiner geworden, in Höhe und Breite im selben
+Verhältnis.
+
 | Haltung | Zentimeter | Datei muss sein |
 |---|---|---|
-| `steht` | 46 × 170 cm | **258 × 952 px** |
-| `liegt` | 48 × 42 cm | **269 × 235 px** |
+| `steht` | 35 × 130 cm | **196 × 728 px** |
+| `liegt` | 37 × 32 cm | **207 × 179 px** |
 
-Vorlagen liegen in `vorlagen/bella_steht_258x952.png` und
-`vorlagen/bella_liegt_269x235.png`. Zum Draufschauen beim Malen gibt es
+Vorlagen liegen in `vorlagen/bella_steht_196x728.png` und
+`vorlagen/bella_liegt_207x179.png`. Zum Draufschauen beim Malen gibt es
 `vorlagen/uebersicht_bella.png`: das Zentimeterraster, der Ausschnitt,
 den die Badewanne zeigt, und was auf welche Schicht gehört.
 
 In der Badewanne wird nur der obere Teil der stehenden Figur gezeigt:
-die obersten **42 von 170 cm**, also die obersten 235 Punkte. Dorthin
+die obersten **32 von 130 cm**, also die obersten 179 Punkte. Dorthin
 gehört der Kopf. Abgeschnitten wird beim Zeichnen, nicht in der Datei —
 du malst immer die ganze Figur.
 
@@ -274,8 +278,8 @@ ein Kleid ohne Trägerin übrig — dann bleibt es bei der gezeichneten.
 
 ### Nur eine Datei statt Schichten
 
-Wer gar nicht schichten will, legt `bella_steht.png` (258 × 952) und
-`bella_liegt.png` (269 × 235) ab. Die gelten dann für alles — Garderobe,
+Wer gar nicht schichten will, legt `bella_steht.png` (196 × 728) und
+`bella_liegt.png` (207 × 179) ab. Die gelten dann für alles — Garderobe,
 Frisur und Laune ändern daran nichts, sie stecken ja im Bild.
 
 ## Fenster — der Ausblick

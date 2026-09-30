@@ -542,7 +542,10 @@ function buehneMasse(){
      nicht: das Zimmer wäre dann niedriger als Bella. Dann wird der
      Ausschnitt breiter — mehr Zimmer statt abgeschnittener Bella. */
   const form = leinwandH / leinwandB;
-  const noetig = Math.ceil((BELLA_CM + ZIMMER.bodenCm + 12) / form);
+  /* Gerechnet wird mit dem festen Mindestausschnitt, nicht mit Bellas
+     Größe: sonst würde eine kleinere Bella den Ausschnitt schrumpfen
+     lassen und alles andere im Zimmer erschiene größer. */
+  const noetig = Math.ceil((AUSSCHNITT_MIN_CM + ZIMMER.bodenCm + 12) / form);
   const b = Math.max(ZIMMER.breiteCm, noetig);
   const mass = leinwandB / b;
   return {
@@ -1056,7 +1059,7 @@ const BELLA_LAUNEN = ['normal', 'froh', 'traurig', 'satt', 'schlaef'];
    Maß, liegend das des Kopfkissenbildes. */
 const BELLA_POSE_MASS = {
   steht: { b: BREITEN_CM.bella,  h: GROESSEN_CM.bella },
-  liegt: { b: 48,                h: GROESSEN_CM.bella_liegt },
+  liegt: { b: BREITEN_CM.bella_liegt, h: GROESSEN_CM.bella_liegt },
 };
 
 /* Die Schichten von hinten nach vorn. `wahl` sagt, welche Fassung
@@ -1658,7 +1661,11 @@ function maleBellaImBett(ctx, s, mx, oberkante, rechtsBis){
   const lage = DATA.bella.schlaeft ? schlaflage() : SCHLAFLAGEN[0];
   const liegtCm = GROESSEN_CM.bella_liegt;
   const unten = oberkante + 8;
-  const kopfX = mx - 30 + lage.dx, kopfY = unten - liegtCm + lage.dy;
+  /* Ihr Kopf liegt ein Stück links von der Mitte der Liegefläche — das
+     hing an ihrer Breite und stand hier als feste Zahl. Seit sie kleiner
+     ist, folgt es der Breite, sonst rutschte sie aus dem Kissen. */
+  const liegtBreit = BREITEN_CM.bella_liegt;
+  const kopfX = mx - liegtBreit / 2 - 6 + lage.dx, kopfY = unten - liegtCm + lage.dy;
 
   // Unbedeckt einen Ton dunkler als die Matratze, sonst verschwände der
   // Körper darin und es läge nur ein Kopf auf dem Bett.
@@ -1688,7 +1695,7 @@ function maleBellaImBett(ctx, s, mx, oberkante, rechtsBis){
         && maleBellaSchichtbild(ctx, s, 'liegt', kopfX, kopfY, liegtCm,
                                 ['bella_liegt'], lage.spiegel));
   if (!gemaltLiegend)
-    maleBellaLiegend(ctx, s, kopfX, kopfY, liegtCm * 48 / 42, liegtCm,
+    maleBellaLiegend(ctx, s, kopfX, kopfY, liegtBreit, liegtCm,
                      { haar: HAARFARBE, spiegel: lage.spiegel });
 }
 
@@ -2984,8 +2991,9 @@ function fensterEinstellungen(){
     blatt.appendChild(h('div', { class:'leer', text: modelle.length > 1
       ? 'Gemalte Modelle liegen in Schichten: Haar hinten, Körper, Kleidungsstück, '
         + 'Schuhe, Haar vorn, Gesicht, Accessoire — jede Schicht über der ganzen Figur.'
-      : 'Noch kein gemaltes Modell. Es braucht mindestens bella_m1_steht_koerper.png '
-        + '— 258 × 952 Punkte, also 46 × 170 cm.' }));
+      : 'Noch kein gemaltes Modell. Es braucht mindestens bella_m1_steht_koerper.png — '
+        + sollPunkte(BREITEN_CM.bella) + ' × ' + sollPunkte(GROESSEN_CM.bella)
+        + ' Punkte, also ' + BREITEN_CM.bella + ' × ' + GROESSEN_CM.bella + ' cm.' }));
 
     /* Das Wetter vor dem Fenster. Die Tageszeit kommt von der Uhr, das
        Wetter kann die App nicht wissen — hier stellt man es auf das

@@ -41,7 +41,8 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'bellaSchichtPlatz','bellaSchichtplaetze',
                      'WETTER','TAGESZEITEN','wetterJetzt','ausblickPlatz','zoneGilt',
                      'musikStand','musikWaehlen','musikGutschrift','musikHalten','musikAus',
-                     'musikLaeuft','musikSpielen','tanzt','tanzLage','MUSIK_LAUNE','AKTIVITAETEN']);
+                     'musikLaeuft','musikSpielen','tanzt','tanzLage','MUSIK_LAUNE','AKTIVITAETEN',
+                     'AUSSCHNITT_MIN_CM','BELLA_CM','maleBellaStehend']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -755,9 +756,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     const stamm = 'bella_m1_steht_stueck';
     const merk = { [stamm]: T.BILDER[stamm], [stamm + '_kleid']: T.BILDER[stamm + '_kleid'] };
     try {
-      T.BILDER[stamm] = { el:{}, b:258, h:952 };
+      T.BILDER[stamm] = { el:{}, b:196, h:728 };
       const nurAllgemein = T.bellaSchichtPlatz('m1', 'steht', 'stueck', 'kleid');
-      T.BILDER[stamm + '_kleid'] = { el:{}, b:258, h:952 };
+      T.BILDER[stamm + '_kleid'] = { el:{}, b:196, h:728 };
       const mitGenau = T.bellaSchichtPlatz('m1', 'steht', 'stueck', 'kleid');
       /* Ohne Rückfall müsste jedes Kleidungsstück gemalt sein, bevor
          überhaupt etwas zu sehen wäre. */
@@ -774,10 +775,10 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     const merk = T.BILDER[stamm];
     try {
       if (T.bellaModelleDa().length !== 1) throw new Error('es steht etwas zur Wahl, was es nicht gibt');
-      T.BILDER['bella_m2_steht_stueck'] = { el:{}, b:258, h:952 };
+      T.BILDER['bella_m2_steht_stueck'] = { el:{}, b:196, h:728 };
       if (T.bellaModelleDa().includes('m2'))
         throw new Error('ein Kleid allein macht schon ein Modell');
-      T.BILDER[stamm] = { el:{}, b:258, h:952 };
+      T.BILDER[stamm] = { el:{}, b:196, h:728 };
       if (!T.bellaModelleDa().includes('m2')) throw new Error('mit Körper fehlt das Modell trotzdem');
       return 'erst mit Körper: ' + T.bellaModelleDa().join(', ');
     } finally {
@@ -1186,11 +1187,45 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
          + Math.round(kopfCm * szene.mass) + ' Punkte';
   });
 
-  await p.check('Bella ist siebenmal so hoch wie die Pflanze', () => {
+  await p.check('Bella ist gut fünfmal so hoch wie die Pflanze', () => {
     const v = T.GROESSEN_CM.bella / T.GROESSEN_CM.deko_pflanze;
-    if (T.GROESSEN_CM.bella !== 170) throw new Error('Bella: ' + T.GROESSEN_CM.bella + ' cm');
-    if (v < 6 || v > 8) throw new Error('Verhältnis: ' + v.toFixed(1));
-    return '170 cm zu 25 cm = ' + v.toFixed(1) + ':1';
+    if (T.GROESSEN_CM.bella !== 130) throw new Error('Bella: ' + T.GROESSEN_CM.bella + ' cm');
+    if (v < 4.5 || v > 6) throw new Error('Verhältnis: ' + v.toFixed(1));
+    /* Kleiner wird nur sie. Die Pflanze, der Herd und alles andere
+       behalten ihre Zentimeter — sonst wäre nichts gewonnen. */
+    if (T.GROESSEN_CM.deko_pflanze !== 25 || T.GROESSEN_CM.herd !== 85
+        || T.GROESSEN_CM.kuehlschrank !== 170 || T.ZIMMER.breiteCm !== 340)
+      throw new Error('etwas anderes hat sich mitverändert');
+    return '130 cm zu 25 cm = ' + v.toFixed(1) + ':1, Zimmer und Möbel unverändert';
+  });
+
+  await p.check('Bella ist mitgeschrumpft, nicht gestaucht', () => {
+    /* Ihre Breite und ihr Maß im Bett folgen ihrer Größe. Bliebe die
+       Breite stehen, wäre sie gedrungen statt kleiner. */
+    const form = T.BREITEN_CM.bella / T.GROESSEN_CM.bella;
+    const sollForm = 46 / 170;
+    if (Math.abs(form - sollForm) > 0.01)
+      throw new Error('das Verhältnis stimmt nicht: ' + form.toFixed(3) + ' statt ' + sollForm.toFixed(3));
+    const liegend = T.GROESSEN_CM.bella_liegt / T.GROESSEN_CM.bella;
+    if (Math.abs(liegend - 42 / 170) > 0.01)
+      throw new Error('liegend passt nicht: ' + liegend.toFixed(3));
+    return T.BREITEN_CM.bella + ' × ' + T.GROESSEN_CM.bella + ' cm stehend, '
+         + T.BREITEN_CM.bella_liegt + ' × ' + T.GROESSEN_CM.bella_liegt + ' cm liegend';
+  });
+
+  await p.check('Der Ausschnitt hängt nicht an Bellas Größe', () => {
+    /* Würde der Mindestausschnitt mit ihr schrumpfen, zeigte ein flacher
+       Bildschirm weniger Zimmer — und alles andere erschiene größer.
+       Deshalb steht die Zahl für sich und deckt Möbel bis 170 cm. */
+    if (T.AUSSCHNITT_MIN_CM !== 170)
+      throw new Error('der Mindestausschnitt steht bei ' + T.AUSSCHNITT_MIN_CM);
+    if (T.AUSSCHNITT_MIN_CM <= T.GROESSEN_CM.bella)
+      throw new Error('der Ausschnitt ist nicht größer als Bella');
+    const hoch = Object.entries(T.GROESSEN_CM)
+      .filter(([k]) => k !== 'bella' && k !== 'schrank' && k !== 'regal')
+      .filter(([, v]) => v > T.AUSSCHNITT_MIN_CM);
+    if (hoch.length) throw new Error('passt nicht mehr ins Bild: ' + hoch.map(([k]) => k).join(', '));
+    return T.AUSSCHNITT_MIN_CM + ' cm — unabhängig von Bellas ' + T.GROESSEN_CM.bella + ' cm';
   });
 
   await p.check('Eine gelieferte Grafik passt zu ihrer Eintragung', () => {
@@ -1212,7 +1247,11 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
       if (f.h - band < T.GROESSEN_CM.bella)
         throw new Error('Bella ragt heraus bei ' + f.h + ' cm Bühne');
       if (band < 12) throw new Error('der Boden verschwindet: ' + band);
-      if (band > T.ZIMMER.bodenMaxCm)
+      /* Stand hier einmal `bodenMaxCm` — das gibt es in ZIMMER nicht
+         mehr, also war der Vergleich immer falsch und die Prüfung an
+         dieser Stelle wirkungslos. Beim Verkleinern von Bella ist es
+         aufgefallen. */
+      if (band > T.ZIMMER.bodenCm)
         throw new Error('der Boden ist breiter als erlaubt: ' + band);
       return f.h + ' cm → ' + band;
     });
@@ -1225,9 +1264,16 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     const formate = [[380, 420], [320, 300], [800, 320], [1200, 900]];
     const werte = formate.map(([b, h]) => {
       const form = h / b;
+      /* `bodenMinCm` gibt es in ZIMMER nicht: die Rechnung ergab NaN,
+         und damit war jede Bedingung darunter falsch — die Prüfung hat
+         nichts geprüft. Jetzt steht dieselbe Rechnung wie in
+         buehneMasse. */
       const breite = Math.max(T.ZIMMER.breiteCm,
-                              Math.ceil((T.GROESSEN_CM.bella + T.ZIMMER.bodenMinCm + 12) / form));
+                              Math.ceil((T.AUSSCHNITT_MIN_CM + T.ZIMMER.bodenCm + 12) / form));
+      if (!Number.isFinite(breite)) throw new Error('die Rechnung geht nicht auf: ' + breite);
       const hoehe = breite * form;
+      if (hoehe - T.bodenbandCm({ h: hoehe }) < T.AUSSCHNITT_MIN_CM)
+        throw new Error(b + '×' + h + ': der Mindestausschnitt passt nicht');
       if (hoehe - T.bodenbandCm({ h: hoehe }) < T.GROESSEN_CM.bella)
         throw new Error(b + '×' + h + ': Bella passt nicht');
       if (breite < 300) throw new Error(b + '×' + h + ': nur ' + breite + ' cm Zimmer');

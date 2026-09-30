@@ -59,11 +59,24 @@ const ZIMMER = {
 /* Wie hoch die Dinge wirklich sind, in Zentimetern — und wie breit.
    Beides wird gebraucht: aus dem Verhältnis ergibt sich die Form, und
    an der Höhe hängt der Maßstab. */
-const BELLA_CM = 170;
+
+/* Bella ist 1,30 m groß. Mit ihr schrumpft nur sie: ihre Breite und ihr
+   Maß im Bett folgen im selben Verhältnis, damit sie nicht gestaucht
+   wird — alles andere im Zimmer behält seine Zentimeter. */
+const BELLA_CM = 130;
+
+/* Wie hoch der gezeigte Ausschnitt mindestens sein muss. Das war einmal
+   Bellas Größe. Seit sie kleiner ist, steht die Zahl für sich: hinge sie
+   an Bella, würde der Ausschnitt mitschrumpfen — und auf einem flachen
+   Bildschirm erschiene dann plötzlich alles andere größer. Möbel bis
+   170 cm bleiben damit sicher im Bild. */
+const AUSSCHNITT_MIN_CM = 170;
 
 const GROESSEN_CM = {
   bella:        BELLA_CM,
-  bella_liegt:  42,
+  /* Im Bett ist von ihr Kopf und eine Schulter zu sehen: das sind
+     42 der 170 Bella-Einheiten, also 130 × 42/170. */
+  bella_liegt:  Math.round(BELLA_CM * 42 / 170),
   deko_pflanze: 25,
 
   bett:         55,
@@ -99,7 +112,11 @@ const GROESSEN_CM = {
 /* Breiten, wo die Form nicht aus der Höhe folgt. Steht hier nichts,
    wird die Breite aus dem Seitenverhältnis des Platzhalters genommen. */
 const BREITEN_CM = {
-  bella:        46,
+  /* 46 cm bei 170 cm Größe, im selben Verhältnis mitgeschrumpft. Die
+     Zeichnung selbst rechnet in Bella-Einheiten und wird gleichmäßig
+     kleiner; diese Zahl sagt nur, wie breit ihr Standplatz ist. */
+  bella:        Math.round(BELLA_CM * 46 / 170),
+  bella_liegt:  Math.round(BELLA_CM * 48 / 170),   // liegend ist sie breiter als hoch
   deko_pflanze: 21,       // 120 Punkte breit bei 5,6 Punkten je cm
 
   bett:         200, fenster: 90,  lampe: 40,  nachttisch: 45,
