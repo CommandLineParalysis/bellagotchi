@@ -188,6 +188,148 @@ stattdessen `bett_nische` (Vorlage 1008 × 336 px). Dann bleiben Bogen,
 Fenster und Regal gezeichnet. Für `bett_nische` steht keine Größe im
 Code — die Datei bestimmt sie selbst, Punkte ÷ 5,6 = Zentimeter.
 
+## Bella selbst malen
+
+Bella ist gezeichnet — aus Zentimetern, nicht aus einem Raster. Willst du
+sie selbst malen, legst du sie in **Schichten** ab, in derselben
+Reihenfolge, in der die gezeichnete entsteht:
+
+| # | Schicht | Fassungen je | Was darauf gehört |
+|---|---|---|---|
+| 1 | `haar_hinten` | Frisur | was hinter Kopf und Körper liegt |
+| 2 | `koerper` | — | die Haut: Kopf, Ohren, Hals, Arme, Beine, Füße |
+| 3 | `stueck` | Kleidungsstück | Kleid, Rock, Latzhose, Pulli, Schlafanzug |
+| 4 | `schuhe` | Schuhpaar | |
+| 5 | `haar_vorn` | Frisur | Pony, Seitensträhnen, was übers Gesicht fällt |
+| 6 | `gesicht` | Laune | Augen, Mund, Wangen |
+| 7 | `acc` | Accessoire | Schleife, Hut, Brille, Blume, Kopfhörer, Krone |
+
+Jede Schicht ist ein Bild über der **ganzen Figur**, durchsichtig da, wo
+nichts ist. Deshalb passen die Schichten von selbst zueinander: es gibt
+keine Ankerpunkte, die verrutschen könnten. Mal alle auf derselben
+Vorlage, dann triffst du auf den Punkt.
+
+### Die Flächen
+
+| Haltung | Zentimeter | Datei muss sein |
+|---|---|---|
+| `steht` | 46 × 170 cm | **258 × 952 px** |
+| `liegt` | 48 × 42 cm | **269 × 235 px** |
+
+Vorlagen liegen in `vorlagen/bella_steht_258x952.png` und
+`vorlagen/bella_liegt_269x235.png`. Zum Draufschauen beim Malen gibt es
+`vorlagen/uebersicht_bella.png`: das Zentimeterraster, der Ausschnitt,
+den die Badewanne zeigt, und was auf welche Schicht gehört.
+
+In der Badewanne wird nur der obere Teil der stehenden Figur gezeigt:
+die obersten **42 von 170 cm**, also die obersten 235 Punkte. Dorthin
+gehört der Kopf. Abgeschnitten wird beim Zeichnen, nicht in der Datei —
+du malst immer die ganze Figur.
+
+### Die Dateinamen
+
+    bella_<modell>_<haltung>_<schicht>[_<fassung>].png
+
+`<modell>` ist `m1`, `m2`, `m3` oder `m4` — vier Plätze, damit mehrere
+Bellas nebeneinander entstehen können. `<haltung>` ist `steht` oder
+`liegt`.
+
+| Fassungen von | heißen |
+|---|---|
+| Frisur | `lang`, `kurz`, `zopf`, `locken` |
+| Kleidungsstück | `kleid`, `rock`, `latzhose`, `pulli`, `schlafanzug` |
+| Schuhe | `sch_barfuss`, `sch_ballerina`, `sch_stiefel`, `sch_turnschuh`, `sch_sandale` |
+| Laune | `normal`, `froh`, `traurig`, `satt`, `schlaef` |
+| Accessoire | `acc_keins`, `acc_schleife`, `acc_hut`, `acc_brille`, `acc_blume`, `acc_kopfhoerer`, `acc_krone` |
+
+### Wie fein du malst, entscheidest du
+
+Fehlt die Fassung für eine bestimmte Frisur, nimmt das Spiel die
+allgemeine Schicht. Du kannst also klein anfangen:
+
+    bella_m1_steht_koerper.png        ← das reicht schon
+    bella_m1_steht_stueck.png         ← ein Kleid für alle Kleidungsstücke
+    bella_m1_steht_haar_hinten.png    ← eine Frisur für alle
+    bella_m1_steht_haar_vorn.png
+    bella_m1_steht_gesicht.png        ← ein Gesicht für alle Launen
+
+und später genauer werden:
+
+    bella_m1_steht_stueck_schlafanzug.png   ← nur für den Schlafanzug
+    bella_m1_steht_gesicht_traurig.png      ← nur wenn sie traurig ist
+    bella_m1_steht_haar_vorn_zopf.png       ← nur für den Zopf
+
+Was du nicht malst, wird nicht gezeichnet. Malst du keine Schuhe, hat
+Bella keine an — es wird **nichts** aus der gezeichneten Fassung
+dazugemischt, sonst stünden zwei Stile im selben Bild.
+
+Malst du keine liegende Bella, schläft die gezeichnete in deinem Bett.
+
+### Umschalten
+
+Einstellungen → **BELLA**. Zur Wahl steht immer `GEZEICHNET`; ein
+gemaltes Modell erscheint erst, wenn wenigstens
+`bella_<modell>_steht_koerper.png` da ist. Ohne Körperschicht bliebe nur
+ein Kleid ohne Trägerin übrig — dann bleibt es bei der gezeichneten.
+
+### Nur eine Datei statt Schichten
+
+Wer gar nicht schichten will, legt `bella_steht.png` (258 × 952) und
+`bella_liegt.png` (269 × 235) ab. Die gelten dann für alles — Garderobe,
+Frisur und Laune ändern daran nichts, sie stecken ja im Bild.
+
+## Fenster — der Ausblick
+
+Alle Fenster zeigen dasselbe: das in der Küche, das im Wohnzimmer und das
+in der Schlafnische. Gemalt wird **nur die Scheibe** — Rahmen, Sprossen
+und Vorhang zeichnet das Spiel weiter, damit ein Fenster ein Fenster
+bleibt.
+
+| Platz | Zentimeter | Datei muss sein |
+|---|---|---|
+| `ausblick` | 90 × 110 cm | **504 × 616 px** |
+
+Vorlage: `vorlagen/ausblick_504x616.png`.
+
+### Fassungen für Tageszeit und Wetter
+
+    ausblick_<tageszeit>_<wetter>.png
+
+| | |
+|---|---|
+| Tageszeiten | `morgen` (5–8 Uhr), `tag` (8–17), `abend` (17–20), `nacht` (20–5) |
+| Wetterlagen | `sonnig`, `wolkig`, `regen`, `schnee` |
+
+Die Tageszeit kommt von der Uhr des Handys. Gesucht wird von genau nach
+ungenau — für eine Regennacht also der Reihe nach:
+
+    ausblick_nacht_regen.png    ← genau diese Nacht bei Regen
+    ausblick_nacht.png          ← jede Nacht
+    ausblick_regen.png          ← jeder Regen
+    ausblick.png                ← immer
+
+Ein einziges Bild reicht also für den Anfang, und jedes weitere wird
+gesehen, sobald es da ist. Eine Lücke kann nicht entstehen.
+
+### Das Wetter einstellen
+
+Einstellungen → **WETTER**. `AUTOMATISCH` lost einmal am Tag eine Lage
+aus — gelost wird aus dem Datum, damit es den Tag über stehen bleibt und
+nicht im Bild flackert. Wählst du eine Lage, bleibt sie: dann hat Bella
+dasselbe Wetter wie du vor dem eigenen Fenster.
+
+Liegt keine Datei da, zeichnet das Spiel den Ausblick selbst — Himmel
+nach Tageszeit, Wolken und Nässe nach Wetter, unten die Stadt.
+
+### Im gemalten Schlafzimmer
+
+Malst du die ganze Nische als `szene_nische.png`, steckt der
+Fensterrahmen schon in deinem Bild. Der Ausblick kommt dann in die
+Scheibe — wo die liegt, weiß nur, wer das Bild gemalt hat. Deshalb gibt
+es im Platzierungs-Modus eine Zone **Fenster**, die du auf dein gemaltes
+Fenster schiebst und in der Größe anpasst. Malst du keinen Ausblick,
+bleibt dein Bild unangetastet.
+
 ## Wanddeko
 
 Hängt im Schlafzimmer an der Wand, höchstens drei Stück gleichzeitig,

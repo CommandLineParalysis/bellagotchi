@@ -35,7 +35,11 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'allesFreischalten','WANDDEKO','WANDDEKO_MAX','ZONEN','zone','zoneDa','BADEZUSAETZE',
                      'zonenVorgabe','zoneSetzen','platzSetzen','szenenMasse','MOEBEL',
                      'BREITEN_CM','dingeImRaum','wanneMasse','nischeMasse',
-                     'bodenbandCm','breiteCm','platzVon','eigenerPlatz']);
+                     'bodenbandCm','breiteCm','platzVon','eigenerPlatz',
+                     'BILDER','BELLA_MODELLE','BELLA_POSEN','BELLA_SCHICHTEN','BELLA_POSE_MASS',
+                     'BELLA_LAUNEN','bellaModell','bellaModelleDa','bellaModellDa',
+                     'bellaSchichtPlatz','bellaSchichtplaetze',
+                     'WETTER','TAGESZEITEN','wetterJetzt','ausblickPlatz','zoneGilt']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -584,6 +588,183 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     if (fehlt.length) throw new Error('kein Platz für: ' + fehlt.join(', '));
     return Object.keys(T.BADEZUSAETZE).length + ' Wannen, ' + Object.keys(T.MOEBEL).length
          + ' Möbel, ' + Object.keys(T.WANDDEKO).length + ' Wanddeko';
+  });
+
+  /* --- Bella-Modelle --- */
+
+  await p.check('Jede Bella-Schicht hat einen Platz, je Modell und Haltung', () => {
+    const fehlt = [];
+    Object.keys(T.BELLA_MODELLE).filter(m => m !== 'gezeichnet').forEach(m => {
+      T.BELLA_POSEN.forEach(pose => {
+        T.BELLA_SCHICHTEN.forEach(sch => {
+          const stamm = 'bella_' + m + '_' + pose + '_' + sch.teil;
+          if (!(stamm in T.BILDPLAETZE)) fehlt.push(stamm);
+          (sch.ids ? sch.ids() : []).forEach(id => {
+            if (!(stamm + '_' + id in T.BILDPLAETZE)) fehlt.push(stamm + '_' + id);
+          });
+        });
+      });
+    });
+    if (fehlt.length) throw new Error('ohne Platz: ' + fehlt.slice(0, 4).join(', ')
+                                    + ' (' + fehlt.length + ')');
+    const wie = Object.keys(T.BILDPLAETZE).filter(k => k.startsWith('bella_m')).length;
+    return (Object.keys(T.BELLA_MODELLE).length - 1) + ' Modelle, ' + T.BELLA_POSEN.length
+         + ' Haltungen, ' + T.BELLA_SCHICHTEN.length + ' Schichten — ' + wie + ' Plätze';
+  });
+
+  await p.check('Die genauere Schicht schlägt die allgemeine', () => {
+    const stamm = 'bella_m1_steht_stueck';
+    const merk = { [stamm]: T.BILDER[stamm], [stamm + '_kleid']: T.BILDER[stamm + '_kleid'] };
+    try {
+      T.BILDER[stamm] = { el:{}, b:258, h:952 };
+      const nurAllgemein = T.bellaSchichtPlatz('m1', 'steht', 'stueck', 'kleid');
+      T.BILDER[stamm + '_kleid'] = { el:{}, b:258, h:952 };
+      const mitGenau = T.bellaSchichtPlatz('m1', 'steht', 'stueck', 'kleid');
+      /* Ohne Rückfall müsste jedes Kleidungsstück gemalt sein, bevor
+         überhaupt etwas zu sehen wäre. */
+      if (nurAllgemein !== stamm) throw new Error('kein Rückfall auf die allgemeine Fassung');
+      if (mitGenau !== stamm + '_kleid') throw new Error('die genauere Fassung wird übergangen');
+      return nurAllgemein + ' → ' + mitGenau;
+    } finally {
+      Object.entries(merk).forEach(([k, v]) => { if (v) T.BILDER[k] = v; else delete T.BILDER[k]; });
+    }
+  });
+
+  await p.check('Ohne Körperschicht bleibt es bei der gezeichneten Bella', () => {
+    const stamm = 'bella_m2_steht_koerper';
+    const merk = T.BILDER[stamm];
+    try {
+      if (T.bellaModelleDa().length !== 1) throw new Error('es steht etwas zur Wahl, was es nicht gibt');
+      T.BILDER['bella_m2_steht_stueck'] = { el:{}, b:258, h:952 };
+      if (T.bellaModelleDa().includes('m2'))
+        throw new Error('ein Kleid allein macht schon ein Modell');
+      T.BILDER[stamm] = { el:{}, b:258, h:952 };
+      if (!T.bellaModelleDa().includes('m2')) throw new Error('mit Körper fehlt das Modell trotzdem');
+      return 'erst mit Körper: ' + T.bellaModelleDa().join(', ');
+    } finally {
+      delete T.BILDER['bella_m2_steht_stueck'];
+      if (merk) T.BILDER[stamm] = merk; else delete T.BILDER[stamm];
+    }
+  });
+
+  await p.check('Die Figurfläche stimmt mit den eingetragenen Maßen', () => {
+    /* Alle Schichten liegen auf derselben Fläche — sonst passten sie
+       nicht zueinander. Stimmt sie nicht mit Bellas Maß, wäre jede
+       Vorlage in LIESMICH.md falsch. */
+    const st = T.BELLA_POSE_MASS.steht, li = T.BELLA_POSE_MASS.liegt;
+    if (st.b !== T.BREITEN_CM.bella || st.h !== T.GROESSEN_CM.bella)
+      throw new Error('stehend passt nicht: ' + st.b + '×' + st.h);
+    if (li.h !== T.GROESSEN_CM.bella_liegt) throw new Error('liegend passt nicht: ' + li.h);
+    return st.b + '×' + st.h + ' cm stehend (' + T.sollPunkte(st.b) + '×' + T.sollPunkte(st.h)
+         + ' Punkte), ' + li.b + '×' + li.h + ' cm liegend';
+  });
+
+  await p.check('Das gewählte Modell übersteht das Laden', () => {
+    if (T.adoptVault({ bella:{ modell:'m3' } }).bella.modell !== 'm3')
+      throw new Error('die Wahl geht verloren');
+    if (T.adoptVault({ bella:{ modell:'unfug' } }).bella.modell !== 'gezeichnet')
+      throw new Error('Unsinn wird nicht abgefangen');
+    if (T.adoptVault({}).bella.modell !== 'gezeichnet')
+      throw new Error('ohne Angabe steht nichts da');
+    return 'm3 bleibt, Unsinn wird gezeichnet';
+  });
+
+  /* --- Fenster, Tageszeit und Wetter --- */
+
+  await p.check('Für jede Tageszeit und jedes Wetter gibt es einen Fensterplatz', () => {
+    const fehlt = [];
+    if (!('ausblick' in T.BILDPLAETZE)) fehlt.push('ausblick');
+    Object.keys(T.WETTER).forEach(w => {
+      if (!('ausblick_' + w in T.BILDPLAETZE)) fehlt.push('ausblick_' + w);
+    });
+    T.TAGESZEITEN.forEach(tz => {
+      if (!('ausblick_' + tz in T.BILDPLAETZE)) fehlt.push('ausblick_' + tz);
+      Object.keys(T.WETTER).forEach(w => {
+        if (!('ausblick_' + tz + '_' + w in T.BILDPLAETZE)) fehlt.push('ausblick_' + tz + '_' + w);
+      });
+    });
+    if (fehlt.length) throw new Error('ohne Platz: ' + fehlt.join(', '));
+    return T.TAGESZEITEN.length + ' Tageszeiten × ' + Object.keys(T.WETTER).length
+         + ' Wetterlagen = ' + Object.keys(T.BILDPLAETZE).filter(k => k.startsWith('ausblick')).length
+         + ' Plätze';
+  });
+
+  await p.check('Der Ausblick fällt von genau auf ungenau zurück', () => {
+    const merk = T.DATA.wetter;
+    const gesetzt = [];
+    const legen = n => { gesetzt.push(n); T.BILDER[n] = { el:{}, b:504, h:616 }; };
+    try {
+      T.DATA.wetter = 'regen';
+      if (T.ausblickPlatz('nacht')) throw new Error('ohne Datei kommt trotzdem etwas');
+      legen('ausblick');
+      if (T.ausblickPlatz('nacht') !== 'ausblick') throw new Error('die eine Fassung greift nicht');
+      legen('ausblick_regen');
+      if (T.ausblickPlatz('nacht') !== 'ausblick_regen') throw new Error('das Wetter schlägt nicht durch');
+      legen('ausblick_nacht');
+      if (T.ausblickPlatz('nacht') !== 'ausblick_nacht') throw new Error('die Tageszeit schlägt nicht durch');
+      legen('ausblick_nacht_regen');
+      if (T.ausblickPlatz('nacht') !== 'ausblick_nacht_regen')
+        throw new Error('die genaue Fassung schlägt nicht durch');
+      // Eine Tageszeit ohne eigene Datei nimmt wieder die Wetterfassung.
+      if (T.ausblickPlatz('tag') !== 'ausblick_regen')
+        throw new Error('ohne Tagesfassung wird nicht zurückgefallen: ' + T.ausblickPlatz('tag'));
+      return 'ausblick → _regen → _nacht → _nacht_regen';
+    } finally {
+      gesetzt.forEach(n => { delete T.BILDER[n]; });
+      T.DATA.wetter = merk;
+    }
+  });
+
+  await p.check('Das eingestellte Wetter schlägt die Losung', () => {
+    const merk = T.DATA.wetter;
+    try {
+      T.DATA.wetter = 'schnee';
+      const fest = [new Date(2026, 0, 1), new Date(2026, 7, 9)].map(d => T.wetterJetzt(d));
+      if (fest.some(w => w !== 'schnee')) throw new Error('festgestellt hält nicht: ' + fest.join(', '));
+      T.DATA.wetter = 'auto';
+      /* Ausgelost wird aus dem Datum: derselbe Tag gibt immer dasselbe
+         Wetter, sonst flackerte das Fenster bei jedem Bild. */
+      const tag = new Date(2026, 2, 14);
+      const frueh = T.wetterJetzt(new Date(2026, 2, 14, 2, 5));
+      const spaet = T.wetterJetzt(new Date(2026, 2, 14, 23, 50));
+      if (frueh !== spaet) throw new Error('wechselt im Lauf des Tages: ' + frueh + ' → ' + spaet);
+      const ueber = [];
+      for (let i = 0; i < 60; i++) ueber.push(T.wetterJetzt(new Date(2026, 0, 1 + i)));
+      const verschieden = [...new Set(ueber)];
+      if (verschieden.some(w => !T.WETTER[w])) throw new Error('unbekanntes Wetter: ' + verschieden.join(', '));
+      if (verschieden.length < 3) throw new Error('kaum Abwechslung: ' + verschieden.join(', '));
+      return 'fest hält, ' + T.wetterJetzt(tag) + ' den ganzen Tag, '
+           + verschieden.length + ' Lagen über 60 Tage';
+    } finally { T.DATA.wetter = merk; }
+  });
+
+  await p.check('Das Wetter übersteht das Laden', () => {
+    if (T.adoptVault({ wetter:'regen' }).wetter !== 'regen') throw new Error('die Wahl geht verloren');
+    if (T.adoptVault({ wetter:'nieselig' }).wetter !== 'auto') throw new Error('Unsinn wird nicht abgefangen');
+    if (T.adoptVault({}).wetter !== 'auto') throw new Error('ohne Angabe steht nichts da');
+    return 'regen bleibt, Unsinn wird automatisch';
+  });
+
+  await p.check('Das Fenster im Schlafzimmer lässt sich setzen', () => {
+    const merk = T.BILDER.szene_nische;
+    try {
+      /* Bei gezeichneter Nische immer — da gibt es ein Fenster. */
+      if (!T.zoneGilt('schlaf', 'zone_ausblick')) throw new Error('bei gezeichneter Nische fehlt es');
+      if (!T.dingeImRaum('schlaf').some(d => d.name === 'zone_ausblick'))
+        throw new Error('es steht nicht in der Liste zum Setzen');
+      /* Bei gemalter Nische ohne Ausblick gäbe es nichts zu setzen —
+         dann stünde im Platzierungs-Modus ein Rahmen um nichts. */
+      T.BILDER.szene_nische = { el:{}, b:1176, h:1320 };
+      if (T.zoneGilt('schlaf', 'zone_ausblick'))
+        throw new Error('bei gemalter Nische ohne Ausblick steht es trotzdem da');
+      T.BILDER.ausblick = { el:{}, b:504, h:616 };
+      if (!T.zoneGilt('schlaf', 'zone_ausblick'))
+        throw new Error('mit gemaltem Ausblick fehlt es');
+      return 'gezeichnet: ja · gemalt ohne Ausblick: nein · gemalt mit Ausblick: ja';
+    } finally {
+      delete T.BILDER.ausblick;
+      if (merk) T.BILDER.szene_nische = merk; else delete T.BILDER.szene_nische;
+    }
   });
 
   /* --- Gemalte Wände und Böden --- */

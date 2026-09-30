@@ -27,8 +27,12 @@ function leererVault(){
       satt: 75, sauber: 80, ausgeruht: 70, laune: 80,
       schlaeft: false, zugedeckt: false,
       ort: 'schlaf',            // sie ist immer nur an einem Ort
+      modell: 'gezeichnet',     // gezeichnet oder eine gemalte Fassung
     },
     bad: { zusatz: 'klar' },
+    /* Das Wetter vor dem Fenster. „auto" lost einmal am Tag; ein Name
+       aus WETTER stellt es fest — dann hat Bella dasselbe Wetter wie du. */
+    wetter: 'auto',
     /* Von Hand gesetzte Plätze, in Zentimetern: raum → name → {x, unten}.
        Was hier steht, gilt vor der Voreinstellung. */
     plaetze: {},
@@ -86,7 +90,7 @@ const state = {
 
 function vaultPayload(){
   const v = {};
-  for (const k of ['bella','bad','plaetze','zonen','bestellung','bestelltHeute','outfit','zeiten','raeume',
+  for (const k of ['bella','bad','wetter','plaetze','zonen','bestellung','bestelltHeute','outfit','zeiten','raeume',
                    'besitz','vorrat','snacks','kochbuch','post','gesprochen','erinnerungen',
                    'stand','letzterBesuch','modus','backup']) v[k] = DATA[k];
   return v;
@@ -116,8 +120,10 @@ function adoptVault(saved){
     schlaeft: !!b.schlaeft,
     zugedeckt: !!b.zugedeckt,
     ort: RAEUME.includes(b.ort) ? b.ort : 'schlaf',
+    modell: BELLA_MODELLE[b.modell] ? b.modell : 'gezeichnet',
   };
   v.bad = { zusatz: BADEZUSAETZE[(saved.bad || {}).zusatz] ? saved.bad.zusatz : 'klar' };
+  v.wetter = WETTER[saved.wetter] ? saved.wetter : 'auto';
   v.plaetze = {};
   Object.entries(saved.plaetze || {}).forEach(([raum, dinge]) => {
     if (!RAEUME.includes(raum) || !dinge || typeof dinge !== 'object') return;
@@ -741,6 +747,54 @@ function tageszeit(d){
   return { name:'nacht', nacht:true };
 }
 
+const TAGESZEITEN = ['morgen', 'tag', 'abend', 'nacht'];
+
+/* ---------- Wetter ----------
+   Vier Lagen. Die Tageszeit kommt von der Uhr des Handys, das Wetter
+   kann keine App von sich aus wissen — deshalb zweierlei: „automatisch"
+   lost es aus, und wer es feststellt, hat bei Bella dasselbe Wetter wie
+   vor dem eigenen Fenster.
+
+   Gelost wird aus dem Datum und nicht mit Math.random: dieselbe Zahl
+   soll den ganzen Tag herauskommen. Würfelte jedes Bild neu, flackerte
+   das Fenster dreißigmal in der Sekunde durch alle vier Lagen. */
+const WETTER = {
+  sonnig: { name:'SONNIG' },
+  wolkig: { name:'WOLKIG' },
+  regen:  { name:'REGEN'  },
+  schnee: { name:'SCHNEE' },
+};
+
+function wettertag(d){
+  const t = d || new Date();
+  return t.getFullYear() + '-' + (t.getMonth() + 1) + '-' + t.getDate();
+}
+
+function wetterJetzt(d){
+  if (WETTER[DATA.wetter]) return DATA.wetter;
+  const namen = Object.keys(WETTER);
+  const gelost = Math.floor(streuFolge('wetter ' + wettertag(d))() * namen.length);
+  return namen[Math.min(namen.length - 1, Math.max(0, gelost))];
+}
+
+/* ---------- Der Ausblick ----------
+   Alle Fenster zeigen dasselbe: das in der Küche, das im Wohnzimmer und
+   das in der Schlafnische. Gemalt wird nur die Scheibe — Rahmen,
+   Sprossen und Vorhang zeichnet das Spiel weiter, damit ein Fenster ein
+   Fenster bleibt und nicht ein Bild an der Wand.
+
+   Gesucht wird von genau nach ungenau: erst die Fassung für diese
+   Tageszeit und dieses Wetter, dann die für die Tageszeit allein, dann
+   die für das Wetter allein, zuletzt die eine Fassung für alles. So
+   reicht ein einziges Bild für den Anfang, und wer mehr malt, bekommt
+   mehr zu sehen — ohne dass je eine Lücke entstehen kann. */
+function ausblickPlatz(zeit, wetter){
+  const tz = zeit || tageszeit().name;
+  const w = wetter || wetterJetzt();
+  return ['ausblick_' + tz + '_' + w, 'ausblick_' + tz, 'ausblick_' + w, 'ausblick']
+           .find(n => bildDa(n)) || null;
+}
+
 function raumFarben(raum){
   const r = DATA.raeume[raum];
   return { wand: WANDFARBEN[r.wand].farben, boden: BODENFARBEN[r.boden].farben,
@@ -799,9 +853,126 @@ function zappel(){
    säße das Gesicht neben dem Kopf. `untenCm` ist der Boden unter ihren
    Füßen — Dinge stehen auf dem Boden, sie hängen nicht an der
    Oberkante. */
+/* ---------- Bella-Modelle ----------
+   Bella ist gezeichnet — aus Zentimetern, nicht aus einem Raster. Wer
+   sie selbst malen will, legt sie in Schichten ab, in derselben
+   Reihenfolge, in der die gezeichnete entsteht:
+
+     haar_hinten · koerper · stueck · schuhe · haar_vorn · gesicht · acc
+
+   Jede Schicht ist ein Bild über der **ganzen** Figur, durchsichtig da,
+   wo nichts ist. Deshalb passen die Schichten von selbst zueinander:
+   es gibt keine Ankerpunkte, die verrutschen könnten, und wer auf
+   derselben Vorlage malt, trifft auf den Punkt. Verzerrt wird nichts —
+   gemessen wird die Breite, die Höhe folgt der Datei.
+
+   Vier Modellplätze, damit mehrere Bellas nebeneinander entstehen
+   können; umgeschaltet wird in den Einstellungen. Ein Modell taucht dort
+   erst auf, wenn wenigstens seine Körperschicht da ist. Fehlt sie,
+   bleibt es bei der gezeichneten — lieber die gezeichnete Bella als ein
+   Kleid ohne Trägerin. */
+const BELLA_MODELLE = {
+  gezeichnet: { name:'GEZEICHNET' },
+  m1: { name:'MODELL 1' }, m2: { name:'MODELL 2' },
+  m3: { name:'MODELL 3' }, m4: { name:'MODELL 4' },
+};
+
+const BELLA_POSEN = ['steht', 'liegt'];
+const BELLA_LAUNEN = ['normal', 'froh', 'traurig', 'satt', 'schlaef'];
+
+/* Die Figurfläche je Haltung, in Zentimetern. Stehend ist es Bellas
+   Maß, liegend das des Kopfkissenbildes. */
+const BELLA_POSE_MASS = {
+  steht: { b: BREITEN_CM.bella,  h: GROESSEN_CM.bella },
+  liegt: { b: 48,                h: GROESSEN_CM.bella_liegt },
+};
+
+/* Die Schichten von hinten nach vorn. `wahl` sagt, welche Fassung
+   gerade gilt — die Frisur, das Kleidungsstück, die Laune. */
+const BELLA_SCHICHTEN = [
+  { teil:'haar_hinten', ids: () => Object.keys(FRISUREN),    wahl: o => o.frisur },
+  { teil:'koerper' },
+  { teil:'stueck',      ids: () => Object.keys(KLEIDUNG),    wahl: o => o.stueck },
+  { teil:'schuhe',      ids: () => Object.keys(SCHUHE),      wahl: o => o.schuhe },
+  { teil:'haar_vorn',   ids: () => Object.keys(FRISUREN),    wahl: o => o.frisur },
+  { teil:'gesicht',     ids: () => BELLA_LAUNEN,             wahl: (o, laune) => laune },
+  { teil:'acc',         ids: () => Object.keys(ACCESSOIRES), wahl: o => o.accessoire },
+];
+
+function bellaModell(){
+  return BELLA_MODELLE[DATA.bella.modell] ? DATA.bella.modell : 'gezeichnet';
+}
+
+/* Die Datei für eine Schicht: erst die Fassung für diese Frisur, dieses
+   Kleidungsstück, diese Laune — sonst die eine Fassung für alle. So
+   reicht ein Kleid für den Anfang, und wer fünf malt, sieht fünf. */
+function bellaSchichtPlatz(modell, pose, teil, id){
+  const stamm = 'bella_' + modell + '_' + pose + '_' + teil;
+  if (id && bildDa(stamm + '_' + id)) return stamm + '_' + id;
+  return bildDa(stamm) ? stamm : null;
+}
+
+function bellaModellDa(modell, pose){
+  return modell !== 'gezeichnet'
+      && !!bellaSchichtPlatz(modell, pose || 'steht', 'koerper', null);
+}
+
+/* Welche Modelle es zu wählen gibt: die gezeichnete immer, ein gemaltes
+   erst mit Körperschicht. */
+function bellaModelleDa(){
+  return Object.keys(BELLA_MODELLE)
+               .filter(m => m === 'gezeichnet' || bellaModellDa(m));
+}
+
+function bellaSchichtplaetze(pose, laune){
+  const modell = bellaModell();
+  if (!bellaModellDa(modell, pose)) return [];
+  return BELLA_SCHICHTEN
+    .map(sch => bellaSchichtPlatz(modell, pose, sch.teil,
+                                  sch.wahl ? sch.wahl(DATA.outfit, laune) : null))
+    .filter(Boolean);
+}
+
+/* Gemalte Bella: die Schichten übereinander auf derselben Fläche.
+   `sichtCm` ist, wie viel von oben zu sehen bleibt — in der Wanne nur
+   der Kopf. Abgeschnitten wird beim Zeichnen, nicht in der Datei: die
+   Schicht bleibt die ganze Figur.
+
+   Gemessen wird die Breite, die Höhe folgt dem Seitenverhältnis der
+   Datei. Eine Datei in der Modellauflösung landet damit genau auf ihren
+   Zentimetern; eine in falschem Verhältnis wird nicht verzerrt, sondern
+   sichtbar zu kurz oder zu lang — daran merkt man es. */
+function maleBellaSchichtbild(ctx, s, pose, xCm, obenCm, sichtCm, plaetze, spiegel){
+  if (!plaetze || !plaetze.length || !ctx.drawImage || !ctx.save) return false;
+  const m = BELLA_POSE_MASS[pose] || BELLA_POSE_MASS.steht;
+  const x0 = Math.round(xCm * s.mass), y0 = Math.round(obenCm * s.mass);
+  const bp = Math.max(1, Math.round(m.b * s.mass));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0, y0, bp, Math.max(1, Math.round(sichtCm * s.mass)));
+  ctx.clip();
+  if (spiegel){ ctx.translate(x0 * 2 + bp, 0); ctx.scale(-1, 1); }
+  plaetze.forEach(p => {
+    const b = BILDER[p];
+    if (!b) return;
+    ctx.drawImage(b.el, x0, y0, bp, Math.max(1, Math.round(bp * b.h / b.b)));
+  });
+  ctx.restore();
+  return true;
+}
+
 function maleBellaStehend(ctx, s, xCm, untenCm, gesicht, nurKopf, spiegel){
-  if (maleBildNachMass(ctx, s, 'bella_steht', xCm, untenCm)) return;
   const hoch = nurKopf ? GROESSEN_CM.bella * 0.247 : GROESSEN_CM.bella;
+  const laune = gesicht || stimmung();
+  const oben = untenCm - hoch;
+  /* Erst das gewählte Modell aus Schichten, dann die eine Datei für die
+     ganze Figur, zuletzt die gezeichnete. Beide gelieferten Wege gehen
+     durch denselben Ausschnitt — sonst stünde Bella in der Wanne mit
+     Beinen im Wasser, weil `nurKopf` übergangen würde. */
+  if (maleBellaSchichtbild(ctx, s, 'steht', xCm, oben, hoch,
+                           bellaSchichtplaetze('steht', laune), spiegel)) return;
+  if (bildDa('bella_steht')
+      && maleBellaSchichtbild(ctx, s, 'steht', xCm, oben, hoch, ['bella_steht'], spiegel)) return;
   const breit = breiteCm('bella', null);
   maleBellaFigur(ctx, s, xCm, untenCm - hoch, breit, hoch, {
     frisur: DATA.outfit.frisur,
@@ -810,7 +981,7 @@ function maleBellaStehend(ctx, s, xCm, untenCm, gesicht, nurKopf, spiegel){
     accessoire: DATA.outfit.accessoire,
     stoff: stoffFarben(),
     haar: HAARFARBE,
-    gesicht: gesicht || stimmung(),
+    gesicht: laune,
     nurKopf: !!nurKopf,
     spiegel: !!spiegel,
   });
@@ -986,18 +1157,20 @@ function streuFolge(saat){
   return () => { h = (Math.imul(h, 1664525) + 1013904223) >>> 0; return h / 4294967296; };
 }
 
-function maleStadt(ctx, s, x, y, b, h){
-  px(ctx, s, x, y, b, h, NISCHE.nacht);
+/* Die Häuserzeile unten im Fenster — die Stadt, in die Bella schaut.
+   Nachts mit Licht in den Fenstern, tags als Silhouette. */
+function maleHaeuserband(ctx, s, x, y, b, h, nacht){
   const zufall = streuFolge('stadt');
   // Zwei Reihen Häuser: die hintere blasser, das gibt Tiefe.
-  for (const [tief, farbe] of [[true, NISCHE.nachtfern], [false, '#0A0E22']]){
+  const reihen = nacht ? [NISCHE.nachtfern, '#0A0E22'] : ['#98A0C0', '#5E6688'];
+  for (const [tief, farbe] of [[true, reihen[0]], [false, reihen[1]]]){
     let hx = x;
     while (hx < x + b){
       const hb = 5 + Math.floor(zufall() * 7);
       const hh = (tief ? 8 : 14) + Math.floor(zufall() * (tief ? 10 : 16));
       const hy = y + h - hh;
       px(ctx, s, hx, hy, Math.min(hb, x + b - hx), hh, farbe);
-      if (!tief){
+      if (!tief && nacht){
         for (let fy = hy + 2; fy < y + h - 2; fy += 4)
           for (let fx = hx + 1; fx < hx + hb - 1; fx += 3)
             if (zufall() > .45 && fx < x + b - 1)
@@ -1006,12 +1179,128 @@ function maleStadt(ctx, s, x, y, b, h){
       hx += hb + 1;
     }
   }
-  // Regen: schräge Striche, wie in der Vorlage.
-  const regen = streuFolge('regen');
-  for (let i = 0; i < Math.round(b * h / 26); i++){
-    const rx = x + Math.floor(regen() * b), ry = y + Math.floor(regen() * (h - 3));
-    px(ctx, s, rx, ry, 1, 3, 'rgba(180,210,255,.45)');
+}
+
+/* Der Himmel je Tageszeit, von oben nach unten heller. */
+const HIMMEL = {
+  morgen: ['#F2A97E', '#F8CDA4', '#FBE7CE'],
+  tag:    ['#9AD0FF', '#BFE3F7', '#E4F4FF'],
+  abend:  ['#3A2F63', '#7B4C79', '#C87C79'],
+  nacht:  ['#1B2247', '#2A3566', '#3C4A85'],
+};
+
+/* Wohin der Himmel bei schlechtem Wetter gezogen wird. Ohne das sähe
+   Regen wie Striche vor blauem Himmel aus. */
+const WETTERHIMMEL = { wolkig:'#9AA0B4', regen:'#6E7488', schnee:'#C9CEDC' };
+
+function mischeFarbe(a, b, t){
+  const teile = f => [1, 3, 5].map(i => parseInt(f.slice(i, i + 2), 16));
+  const [r1, g1, b1] = teile(a), [r2, g2, b2] = teile(b);
+  const m = (u, v) => Math.round(u + (v - u) * t).toString(16).padStart(2, '0');
+  return '#' + m(r1, r2) + m(g1, g2) + m(b1, b2);
+}
+
+/* Das gezeichnete Fenster: Himmel nach Tageszeit, Wolken und Nässe nach
+   Wetter, unten die Stadt. Dasselbe in jedem Fenster — und genau das,
+   was ein gemalter Ausblick ersetzt. */
+function maleAusblickGezeichnet(ctx, s, x, y, b, h){
+  const tz = tageszeit(), wetter = wetterJetzt();
+  const zug = WETTERHIMMEL[wetter];
+  const himmel = (HIMMEL[tz.name] || HIMMEL.tag)
+                   .map(f => zug ? mischeFarbe(f, zug, wetter === 'regen' ? .6 : .4) : f);
+  px(ctx, s, x, y, b, h, himmel[0]);
+  px(ctx, s, x, y + h * .45, b, h * .55, himmel[1]);
+  px(ctx, s, x, y + h * .78, b, h * .22, himmel[2]);
+
+  /* Sterne und Mond nur, wenn der Himmel offen ist: bei Regen hängen
+     Wolken davor, und ein Mond mitten im Schauer wäre gelogen. */
+  if (tz.nacht && wetter !== 'regen'){
+    const zufall = streuFolge('sterne');
+    for (let i = 0; i < Math.round(b * h / 90); i++)
+      px(ctx, s, x + zufall() * (b - 1), y + zufall() * h * .7, 1, 1, '#FFF6C8');
+    mKreis(ctx, s, x + b * .72, y + h * .2, Math.max(3, b * .1), '#FFF3C4');
+    mKreis(ctx, s, x + b * .78, y + h * .17, Math.max(2.5, b * .09), himmel[0]);
+  } else if (!tz.nacht && wetter === 'sonnig'){
+    mKreis(ctx, s, x + b * .74, y + h * .18, Math.max(3, b * .1), '#FFE9A8');
+    mKreis(ctx, s, x + b * .74, y + h * .18, Math.max(2, b * .07), '#FFF8D8');
   }
+
+  // Wolken hinter die Stadt, sonst hingen sie vor den Häusern.
+  const wolken = wetter === 'sonnig' ? 2 : wetter === 'regen' ? 5 : 4;
+  const wf = streuFolge('wolken ' + wetter);
+  const wfarbe = wetter === 'regen' ? '#5A6076' : wetter === 'wolkig' ? '#D6DAE6' : '#FFFFFF';
+  for (let i = 0; i < wolken; i++){
+    const wx = x + wf() * b * .7, wy = y + wf() * h * .5;
+    const wr = Math.max(2.5, b * (.06 + wf() * .06));
+    [0, .9, 1.8].forEach((dx, k) =>
+      mKreis(ctx, s, wx + wr * dx, wy + (k === 1 ? -wr * .35 : 0),
+             wr * (k === 1 ? 1.15 : .85), wfarbe));
+  }
+
+  maleHaeuserband(ctx, s, x, y, b, h, tz.nacht);
+
+  if (wetter === 'regen'){
+    // Regen: schräge Striche, wie in der Vorlage.
+    const regen = streuFolge('regen');
+    for (let i = 0; i < Math.round(b * h / 22); i++)
+      px(ctx, s, x + Math.floor(regen() * b), y + Math.floor(regen() * (h - 3)),
+         1, 3, 'rgba(180,210,255,.5)');
+  } else if (wetter === 'schnee'){
+    const flocke = streuFolge('schnee');
+    for (let i = 0; i < Math.round(b * h / 26); i++)
+      px(ctx, s, x + Math.floor(flocke() * b), y + Math.floor(flocke() * h),
+         1.4, 1.4, 'rgba(255,255,255,.85)');
+  }
+}
+
+/* Einen gemalten Ausblick in die Scheibe setzen.
+
+   Nicht über `maleFlaeche`: die entscheidet an der Breite der Datei, ob
+   sie kachelt — bei einer Tapete richtig, bei einem Ausblick falsch.
+   Ein schmal gemalter Ausblick würde sonst zweimal nebeneinander im
+   Fenster stehen.
+
+   Gerechnet wird mit der Achse, die zuerst voll ist, damit nichts
+   abgeschnitten wird; bleibt daneben ein Streifen, wird die Randzeile
+   der Datei fortgesetzt. Verzerrt wird nichts. */
+function maleAusblickBild(ctx, s, platz, x, y, b, h){
+  const bi = BILDER[platz];
+  if (!bi || !ctx.drawImage || !ctx.save) return false;
+  const p = v => Math.round(v * s.mass);
+  const x0 = p(x), y0 = p(y), x1 = p(x + b), y1 = p(y + h);
+  if (!(x1 > x0) || !(y1 > y0)) return false;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x0, y0, x1 - x0, y1 - y0);
+  ctx.clip();
+  const faktor = Math.min((x1 - x0) / bi.b, (y1 - y0) / bi.h);
+  const zb = Math.max(1, Math.round(bi.b * faktor));
+  const zh = Math.max(1, Math.round(bi.h * faktor));
+  const zx = x0 + Math.round(((x1 - x0) - zb) / 2);   // mittig
+  ctx.drawImage(bi.el, zx, y0, zb, zh);               // oben verankert: Himmel oben
+  if (y0 + zh < y1)
+    ctx.drawImage(bi.el, 0, bi.h - 1, bi.b, 1, zx, y0 + zh, zb, y1 - (y0 + zh));
+  if (zx > x0)
+    ctx.drawImage(bi.el, 0, 0, 1, bi.h, x0, y0, zx - x0, zh);
+  if (zx + zb < x1)
+    ctx.drawImage(bi.el, bi.b - 1, 0, 1, bi.h, zx + zb, y0, x1 - (zx + zb), zh);
+  ctx.restore();
+  return true;
+}
+
+/* Ein Fenster füllen: erst der gemalte Ausblick, sonst der gezeichnete. */
+function maleAusblick(ctx, s, x, y, b, h){
+  const platz = ausblickPlatz();
+  if (platz && maleAusblickBild(ctx, s, platz, x, y, b, h)) return;
+  if (ctx.save){
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(Math.round(x * s.mass), Math.round(y * s.mass),
+             Math.round(b * s.mass), Math.round(h * s.mass));
+    ctx.clip();
+  }
+  maleAusblickGezeichnet(ctx, s, x, y, b, h);
+  if (ctx.restore) ctx.restore();
 }
 
 function maleRegal(ctx, s, x, y, b, h){
@@ -1113,12 +1402,26 @@ function wanneMasse(s){
    Ohne eigene Grafik entsprechen sie dem, was gezeichnet wird; wer
    nichts hochlädt, merkt von den Zonen nichts. */
 const ZONEN = {
-  schlaf: { zone_liege:  { name: 'Liegefläche' } },
+  schlaf: {
+    zone_liege: { name: 'Liegefläche' },
+    /* Die Scheibe im Schlafzimmerfenster. Sie zählt nur, solange es
+       etwas zu setzen gibt: bei der gezeichneten Nische immer, bei einem
+       gemalten Hintergrund erst, wenn ein Ausblick gemalt ist — sonst
+       stünde im Platzierungs-Modus ein Rahmen um nichts. */
+    zone_ausblick: { name: 'Fenster',
+                     wenn: () => !bildDa('szene_nische') || !!ausblickPlatz() },
+  },
   bad:    { zone_wasser: { name: 'Wasserfläche' } },
 };
 
 function zoneDa(name){
   return Object.keys(ZONEN).some(r => ZONEN[r][name]);
+}
+
+/* Zählt die Zone gerade? Ohne Bedingung immer. */
+function zoneGilt(raum, name){
+  const z = (ZONEN[raum] || {})[name];
+  return !!z && (!z.wenn || z.wenn());
 }
 
 /* Die Zone, wie sie gerade steht. `vorgabe` ist, was ohne eigene Werte
@@ -1132,6 +1435,13 @@ function zone(raum, name, vorgabe){
     b:     eigenMass.b || vorgabe.b,
     h:     eigenMass.h || vorgabe.h,
   };
+}
+
+/* Die Scheibe im Schlafzimmerfenster als Rechteck mit Oberkante — so
+   wird sie gebraucht, und nur an einer Stelle gerechnet. */
+function ausblickFeld(s){
+  const z = zone('schlaf', 'zone_ausblick', zonenVorgabe('schlaf', 'zone_ausblick', s));
+  return { x: z.x, y: z.unten - z.h, b: z.b, h: z.h, unten: z.unten };
 }
 
 function maleKissenwand(ctx, s, mx, oberkante, rx, gross){
@@ -1189,7 +1499,16 @@ function maleBellaImBett(ctx, s, mx, oberkante, rechtsBis){
     px(ctx, s, vonX - 2, unten - 11 + lage.dy, 20, 2.5, stoff[2]);
   }
 
-  if (!maleBildNachMass(ctx, s, 'bella_liegt', kopfX, kopfY + liegtCm))
+  /* Dieselben drei Wege wie stehend: Schichten des gewählten Modells,
+     die eine Datei, die gezeichnete. Malst du keine liegende Bella,
+     schläft die gezeichnete in deinem Bett. */
+  const gemaltLiegend =
+       maleBellaSchichtbild(ctx, s, 'liegt', kopfX, kopfY, liegtCm,
+                            bellaSchichtplaetze('liegt', 'schlaef'), lage.spiegel)
+    || (bildDa('bella_liegt')
+        && maleBellaSchichtbild(ctx, s, 'liegt', kopfX, kopfY, liegtCm,
+                                ['bella_liegt'], lage.spiegel));
+  if (!gemaltLiegend)
     maleBellaLiegend(ctx, s, kopfX, kopfY, liegtCm * 48 / 42, liegtCm,
                      { haar: HAARFARBE, spiegel: lage.spiegel });
 }
@@ -1212,6 +1531,14 @@ function maleSchlafnische(ctx, s){
   const gemalteNische = maleFlaeche(ctx, s, szenenPlatz, 0, 0, s.b, s.h, true, s.b);
   if (gemalteNische){
     if (!lichtAn() && !eigenesDunkel) px(ctx, s, 0, 0, s.b, s.h, 'rgba(8,6,24,.62)');
+    /* Im gemalten Bild steckt der Fensterrahmen schon; in die Scheibe
+       kommt der Ausblick, wenn einer gemalt ist. Wo die Scheibe liegt,
+       weiß nur, wer das Bild gemalt hat — deshalb die Zone. Gibt es
+       keinen Ausblick, bleibt das gemalte Bild unangetastet. */
+    if (ausblickPlatz()){
+      const f = ausblickFeld(s);
+      maleAusblick(ctx, s, f.x, f.y, f.b, f.h);
+    }
     maleNischeninhalt(ctx, s, n);
     return;
   }
@@ -1256,12 +1583,14 @@ function maleSchlafnische(ctx, s){
     }
   }
 
-  // Fenster links, Regal rechts — beide innerhalb der Nische.
-  const fb = Math.round(rx * 0.72), fh = Math.round(ry * 0.92);
-  const fx = mx - rx + Math.round(rx * 0.18), fy = my - ry + Math.round(ry * 0.22);
+  /* Fenster links, Regal rechts — beide innerhalb der Nische. Wo die
+     Scheibe sitzt, sagt die Zone; gezeigt wird darin derselbe Ausblick
+     wie in Küche und Wohnzimmer. */
+  const f = ausblickFeld(s);
+  const fb = f.b, fh = f.h, fx = f.x, fy = f.y;
   const fenster = () => {
     px(ctx, s, fx - 2, fy - 2, fb + 4, fh + 4, '#4A3A38');
-    maleStadt(ctx, s, fx, fy, fb, fh);
+    maleAusblick(ctx, s, fx, fy, fb, fh);
     px(ctx, s, fx + Math.round(fb / 2), fy, 2, fh, '#4A3A38');
     px(ctx, s, fx, fy + Math.round(fh / 2), fb, 2, '#4A3A38');
     // Vorhang am rechten Fensterrand
@@ -1342,6 +1671,8 @@ function maleNischeninhalt(ctx, s, n){
     maleBellaImBett(ctx, s, liege.x + liege.b / 2, liege.unten, liege.b / 2 - 16);
   if (state.platzieren)
     zonenRahmen(ctx, s, liege, state.platzieren.was === 'zone_liege');
+  if (state.platzieren && zoneGilt('schlaf', 'zone_ausblick'))
+    zonenRahmen(ctx, s, ausblickFeld(s), state.platzieren.was === 'zone_ausblick');
 
   /* Was aus der Post auf dem Bett liegt: am rechten Bettende, nicht
      über Bella — sie liegt links mit dem Kopf am Kissen. */
@@ -2397,6 +2728,41 @@ function fensterEinstellungen(){
     blatt.appendChild(h('div', { class:'leer',
       text:'Voreingestellt ist 02:30 bis 10:30 — ' + DATA.bella.name + ' ist eine Nachteule.' }));
 
+    /* Welche Bella zu sehen ist. Die gezeichnete steht immer da; ein
+       gemaltes Modell erscheint, sobald seine Körperschicht geliefert
+       ist. Steht nur die gezeichnete zur Wahl, sagt die Zeile darunter,
+       was zu malen wäre — sonst wäre der Block ein Knopf ohne Sinn. */
+    const modelle = bellaModelleDa();
+    blatt.appendChild(waehler('BELLA',
+      modelle.map(id => ({ id, name: BELLA_MODELLE[id].name })),
+      id => bellaModell() === id,
+      async id => {
+        DATA.bella.modell = BELLA_MODELLE[id] ? id : 'gezeichnet';
+        await persist(); fensterEinstellungen(); render();
+      }));
+    blatt.appendChild(h('div', { class:'leer', text: modelle.length > 1
+      ? 'Gemalte Modelle liegen in Schichten: Haar hinten, Körper, Kleidungsstück, '
+        + 'Schuhe, Haar vorn, Gesicht, Accessoire — jede Schicht über der ganzen Figur.'
+      : 'Noch kein gemaltes Modell. Es braucht mindestens bella_m1_steht_koerper.png '
+        + '— 258 × 952 Punkte, also 46 × 170 cm.' }));
+
+    /* Das Wetter vor dem Fenster. Die Tageszeit kommt von der Uhr, das
+       Wetter kann die App nicht wissen — hier stellt man es auf das
+       eigene ein, oder lässt es täglich neu auslosen. */
+    blatt.appendChild(waehler('WETTER',
+      [{ id:'auto', name:'AUTOMATISCH' }].concat(
+        Object.entries(WETTER).map(([id, w]) => ({ id, name: w.name }))),
+      id => (WETTER[DATA.wetter] ? DATA.wetter : 'auto') === id,
+      async id => {
+        DATA.wetter = WETTER[id] ? id : 'auto';
+        await persist(); fensterEinstellungen(); render();
+      }));
+    blatt.appendChild(h('div', { class:'leer', text: WETTER[DATA.wetter]
+      ? 'Festgestellt. In jedem Fenster ist ' + WETTER[DATA.wetter].name.toLowerCase() + '.'
+      : 'Automatisch — heute ' + WETTER[wetterJetzt()].name.toLowerCase()
+        + '. Ausgelost wird einmal am Tag; die Tageszeit kommt von der Uhr ('
+        + tageszeit().name + ').' }));
+
     blatt.appendChild(h('div', { class:'block' },
       h('div', { class:'blockkopf', text:'ERINNERUNGEN' }),
       h('button', {
@@ -2696,7 +3062,9 @@ function dingeImRaum(raum){
   ((DATA.raeume[raum] || {}).deko || []).forEach(id =>
     liste.push({ name: id, sprite: KLEINKRAM[id] }));
   if (raum === 'bad') liste.push({ name: 'sp_kerze', sprite: KLEINKRAM.sp_kerze });
-  Object.keys(ZONEN[raum] || {}).forEach(id => liste.push({ name: id, sprite: null, zone: true }));
+  Object.keys(ZONEN[raum] || {}).forEach(id => {
+    if (zoneGilt(raum, id)) liste.push({ name: id, sprite: null, zone: true });
+  });
   return liste;
 }
 
@@ -2836,6 +3204,15 @@ function zonenVorgabe(raum, name, s){
     const w = wanneMasse(s);
     return { x: w.mx - w.rx + 14, unten: w.my + w.ry - 12,
              b: (w.rx - 14) * 2, h: (w.ry - 12) * 2 };
+  }
+  /* Die Scheibe sitzt da, wo sie in der gezeichneten Nische sitzt: links
+     im Bogen, oben. Wer den Hintergrund selbst malt, schiebt sie auf
+     sein eigenes Fenster. */
+  if (name === 'zone_ausblick'){
+    const n = nischeMasse(s);
+    const fb = Math.round(n.rx * 0.72), fh = Math.round(n.ry * 0.92);
+    return { x: n.mx - n.rx + Math.round(n.rx * 0.18),
+             unten: n.my - n.ry + Math.round(n.ry * 0.22) + fh, b: fb, h: fh };
   }
   return { x: 0, unten: 0, b: 40, h: 40 };
 }
@@ -3150,6 +3527,27 @@ function bildplaetzeAnmelden(){
     bildplatzAnlegen('szene_wanne_' + z);
     bildplatzAnlegen('wanne_' + z);
     bildplatzAnlegen('blase_' + z);
+  });
+  /* Bella in Schichten: je Modell, je Haltung, je Schicht ein Platz —
+     und dazu je Frisur, Kleidungsstück, Schuhpaar, Laune und Accessoire
+     eine genauere Fassung. Es muss keine davon geliefert werden; was
+     fehlt, fällt eine Stufe zurück. */
+  Object.keys(BELLA_MODELLE).filter(m => m !== 'gezeichnet').forEach(m => {
+    BELLA_POSEN.forEach(pose => {
+      BELLA_SCHICHTEN.forEach(sch => {
+        const stamm = 'bella_' + m + '_' + pose + '_' + sch.teil;
+        bildplatzAnlegen(stamm);
+        (sch.ids ? sch.ids() : []).forEach(id => bildplatzAnlegen(stamm + '_' + id));
+      });
+    });
+  });
+  /* Der Ausblick für alle Fenster: je Tageszeit und Wetter, dazu die
+     gröberen Fassungen als Rückfall. */
+  bildplatzAnlegen('ausblick');
+  Object.keys(WETTER).forEach(w => bildplatzAnlegen('ausblick_' + w));
+  TAGESZEITEN.forEach(tz => {
+    bildplatzAnlegen('ausblick_' + tz);
+    Object.keys(WETTER).forEach(w => bildplatzAnlegen('ausblick_' + tz + '_' + w));
   });
 }
 

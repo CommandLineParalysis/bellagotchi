@@ -294,22 +294,14 @@ MOEBELBILD.pflanze = (ctx, s, x, y, b, h) => {
   mFlaeche(ctx, s, x + b * 0.16, y + h - 1.5, b * 0.68, 1.5, t.kante);
 };
 
-MOEBELBILD.fenster = (ctx, s, x, y, b, h, stoff, nacht) => {
+MOEBELBILD.fenster = (ctx, s, x, y, b, h) => {
   const w = STOFFE.weiss;
   mKasten(ctx, s, x - 3, y - 3, b + 6, h + 6, w, 1.5);
-  const himmel = nacht ? ['#1B2247','#2A3566','#3C4A85'] : ['#9AD0FF','#BFE3F7','#E4F4FF'];
-  mFlaeche(ctx, s, x, y, b, h, himmel[0]);
-  mFlaeche(ctx, s, x, y + h * 0.45, b, h * 0.55, himmel[1]);
-  mFlaeche(ctx, s, x, y + h * 0.78, b, h * 0.22, himmel[2]);
-  if (nacht){
-    [[0.2,0.15],[0.55,0.28],[0.78,0.12],[0.35,0.4],[0.66,0.55]].forEach(([fx, fy]) =>
-      mFlaeche(ctx, s, x + b * fx, y + h * fy, 1.2, 1.2, '#FFF6C8'));
-    mKreis(ctx, s, x + b * 0.72, y + h * 0.22, 6, '#FFF3C4');
-    mKreis(ctx, s, x + b * 0.78, y + h * 0.19, 5.5, himmel[0]);
-  } else {
-    [[0.22,0.22,9],[0.3,0.26,7],[0.62,0.42,8],[0.7,0.45,6]].forEach(([fx, fy, r]) =>
-      mKreis(ctx, s, x + b * fx, y + h * fy, r, '#FFFFFF'));
-  }
+  /* Die Scheibe füllt der Ausblick — derselbe wie in jedem anderen
+     Fenster. Himmel, Wolken, Stadt und Wetter stehen dort an einer
+     Stelle, damit ein gemaltes Bild alle Fenster auf einmal tauscht;
+     Rahmen und Sprossen bleiben hier. */
+  maleAusblick(ctx, s, x, y, b, h);
   // Sprossen
   mFlaeche(ctx, s, x + b / 2 - 1.2, y, 2.4, h, w.flaeche);
   mFlaeche(ctx, s, x, y + h / 2 - 1.2, b, 2.4, w.flaeche);

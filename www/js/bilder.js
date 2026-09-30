@@ -31,11 +31,20 @@ const BILDPLAETZE = {
   szene_schrank:  '',
   szene_arbeitsflaeche: '',
 
-  // Bella
+  /* Bella. Zwei Wege: eine einzige Datei für die ganze Figur — 46 × 170
+     cm stehend, 48 × 42 cm liegend —, oder ein Modell aus Schichten.
+     Die Schichtplätze heißen bella_<modell>_<haltung>_<schicht> und
+     werden im Spiel angemeldet, nicht hier: es sind zu viele, um sie von
+     Hand zu pflegen. Was in LIESMICH.md steht, gilt. */
   bella_steht:    '',
   bella_liegt:    '',
   bella_isst_1:   '',
   bella_isst_2:   '',
+
+  /* Der Ausblick aus dem Fenster — derselbe in jedem Zimmer. Die
+     Fassungen je Tageszeit und Wetter (ausblick_nacht_regen und so
+     weiter) meldet das Spiel selbst an. */
+  ausblick:       '',
 
   // Handzeug
   hand_dusche:    '',
