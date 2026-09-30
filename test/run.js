@@ -39,7 +39,9 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
                      'BILDER','BELLA_MODELLE','BELLA_POSEN','BELLA_SCHICHTEN','BELLA_POSE_MASS',
                      'BELLA_LAUNEN','bellaModell','bellaModelleDa','bellaModellDa',
                      'bellaSchichtPlatz','bellaSchichtplaetze',
-                     'WETTER','TAGESZEITEN','wetterJetzt','ausblickPlatz','zoneGilt']);
+                     'WETTER','TAGESZEITEN','wetterJetzt','ausblickPlatz','zoneGilt',
+                     'musikStand','musikWaehlen','musikGutschrift','musikHalten','musikAus',
+                     'musikLaeuft','musikSpielen','tanzt','tanzLage','MUSIK_LAUNE','AKTIVITAETEN']);
 
   /* Kochen und Abbrausen laufen jetzt über Szenen, die Zeit brauchen.
      Im Test wird die Zeit nicht abgewartet, sondern vorgespult. */
@@ -588,6 +590,143 @@ const { starteApp, pruefliste } = require('@bappiverse/scaffold/test/harness');
     if (fehlt.length) throw new Error('kein Platz für: ' + fehlt.join(', '));
     return Object.keys(T.BADEZUSAETZE).length + ' Wannen, ' + Object.keys(T.MOEBEL).length
          + ' Möbel, ' + Object.keys(T.WANDDEKO).length + ' Wanddeko';
+  });
+
+  /* --- Badezusätze mit eigenem Bild --- */
+
+  await p.check('Jeder Badezusatz hat einen Bildplatz für die Liste', () => {
+    const fehlt = Object.keys(T.BADEZUSAETZE).filter(z => !(('zusatz_' + z) in T.BILDPLAETZE));
+    if (fehlt.length) throw new Error('ohne Platz: ' + fehlt.join(', '));
+    /* Das ist nicht die gemalte Wanne: die steht unter szene_wanne_<id>
+       und füllt die ganze Szene. Hier geht es um das Fläschchen in der
+       Auswahl, wie bei Zutaten und Snacks. */
+    const beides = Object.keys(T.BADEZUSAETZE)
+      .every(z => ('szene_wanne_' + z) in T.BILDPLAETZE && ('zusatz_' + z) in T.BILDPLAETZE);
+    if (!beides) throw new Error('Szene und Fläschchen sind nicht beide da');
+    return Object.keys(T.BADEZUSAETZE).length + ' Zusätze, je Fläschchen und Szene';
+  });
+
+  /* --- Musik --- */
+
+  await p.check('Aus dem Dateiwähler wird eine Liste', () => {
+    const wie = T.musikWaehlen([
+      { name:'Lieblingslied.mp3', type:'audio/mpeg' },
+      { name:'Zweites Lied.m4a',  type:'' },          // manche Geräte melden nichts
+      { name:'Urlaubsbild.jpg',   type:'image/jpeg' },
+      null,
+    ]);
+    const namen = T.musikStand().lieder.map(l => l.name);
+    if (wie !== 2) throw new Error('es kommen ' + wie + ' Lieder an statt 2');
+    if (namen.join('|') !== 'Lieblingslied|Zweites Lied')
+      throw new Error('die Namen stimmen nicht: ' + namen.join(', '));
+    T.musikAus();
+    T.musikStand().lieder = [];
+    return namen.join(', ') + ' — das Bild bleibt draußen';
+  });
+
+  await p.check('Musik hebt die Laune, solange sie läuft', () => {
+    const m = T.musikStand();
+    const stellen = laeuft => {
+      T.DATA.bella.satt = 50; T.DATA.bella.sauber = 50;
+      T.DATA.bella.ausgeruht = 50; T.DATA.bella.laune = 50;
+      T.DATA.stand = new Date(Date.now() - 3600000).toISOString();
+      m.laeuft = laeuft;
+      m.seit = laeuft ? Date.now() - 3600000 : 0;
+      T.standFortschreiben();
+      return T.DATA.bella.laune;
+    };
+    const ohne = stellen(false), mit = stellen(true);
+    m.laeuft = false; m.seit = 0;
+    /* Eine Stunde Musik ist MUSIK_LAUNE; alles andere läuft gleich. */
+    const unterschied = mit - ohne;
+    if (Math.abs(unterschied - T.MUSIK_LAUNE) > 1.5)
+      throw new Error('eine Stunde Musik bringt ' + unterschied.toFixed(1)
+                    + ' statt ' + T.MUSIK_LAUNE);
+    return 'eine Stunde: ' + ohne.toFixed(1) + ' → ' + mit.toFixed(1);
+  });
+
+  await p.check('Angehaltene Musik zählt nicht weiter', () => {
+    const m = T.musikStand();
+    m.laeuft = true; m.seit = Date.now() - 1800000;
+    T.DATA.bella.laune = 40;
+    T.musikHalten();                       // rechnet die halbe Stunde ab
+    const nachHalten = T.DATA.bella.laune;
+    if (!(nachHalten > 40)) throw new Error('die gelaufene Zeit wird nicht gutgeschrieben');
+    /* Danach darf nichts mehr dazukommen — sonst stiege die Laune
+       weiter, obwohl nichts mehr spielt. */
+    T.DATA.stand = new Date(Date.now() - 3600000).toISOString();
+    T.DATA.bella.satt = 50; T.DATA.bella.sauber = 50; T.DATA.bella.ausgeruht = 50;
+    const vorher = T.DATA.bella.laune;
+    T.standFortschreiben();
+    if (T.musikGutschrift(new Date(), 60) !== 0)
+      throw new Error('es wird weiter Musikzeit gebucht');
+    if (T.musikLaeuft()) throw new Error('sie gilt noch als laufend');
+    /* Auch die Uhr muss stehen, nicht nur der Schalter: bliebe `seit`
+       stehen, würde beim nächsten Anschalten die ganze Pause
+       mitgerechnet. Beim Gegenprobieren war genau das nicht abgedeckt. */
+    if (T.musikStand().seit) throw new Error('die Uhr läuft im Anhalten weiter');
+    return 'abgerechnet auf ' + nachHalten.toFixed(1) + ', danach steht die Uhr';
+  });
+
+  await p.check('Getanzt wird nur im Wohnzimmer', () => {
+    const m = T.musikStand();
+    m.laeuft = true; m.seit = Date.now();
+    T.DATA.bella.schlaeft = false;
+    T.DATA.bella.ort = 'wohnen';
+    const imWohnzimmer = T.tanzt('wohnen');
+    const inDerKueche = T.tanzt('kueche');
+    T.DATA.bella.ort = 'kueche';
+    const woAnders = T.tanzt('wohnen');
+    T.DATA.bella.ort = 'wohnen';
+    T.DATA.bella.schlaeft = true;
+    const imSchlaf = T.tanzt('wohnen');
+    T.DATA.bella.schlaeft = false;
+    m.laeuft = false; m.seit = 0;
+    const ohneMusik = T.tanzt('wohnen');
+    if (!imWohnzimmer) throw new Error('im Wohnzimmer tanzt sie nicht');
+    if (inDerKueche) throw new Error('die Küche tanzt mit');
+    if (woAnders) throw new Error('sie tanzt im Wohnzimmer, obwohl sie in der Küche ist');
+    if (imSchlaf) throw new Error('sie tanzt im Schlaf');
+    if (ohneMusik) throw new Error('sie tanzt ohne Musik');
+    /* Die Lage muss sich über den Takt wirklich ändern — ein Tanz, der
+       stillsteht, wäre keiner. */
+    const lagen = [0, 200, 400, 620, 1240].map(v => T.tanzLage(v));
+    const seiten = new Set(lagen.map(l => l.seite));
+    if (seiten.size < 3) throw new Error('die Tanzlage steht still: ' + [...seiten].join(', '));
+    if (!lagen.some(l => l.spiegel) || !lagen.some(l => !l.spiegel))
+      throw new Error('sie dreht sich nie um');
+    return 'nur im Wohnzimmer, wach und bei Musik · ' + seiten.size + ' Stellungen im Takt';
+  });
+
+  await p.check('Die Musik wird nicht gespeichert', () => {
+    const m = T.musikStand();
+    m.lieder = [{ name:'Lieblingslied', datei:{}, url:'blob:probe' }];
+    m.laeuft = true; m.seit = Date.now();
+    const gespeichert = JSON.stringify(T.vaultPayload());
+    m.lieder = []; m.laeuft = false; m.seit = 0;
+    if (/musik|Lieblingslied|blob:/i.test(gespeichert))
+      throw new Error('die Lieder landen im Bestand');
+    /* Auch nach dem Laden darf nichts auftauchen: die Liste lebt nur im
+       Arbeitsspeicher, weil sie sonst eine Kopie der Musiksammlung wäre. */
+    if ('musik' in T.adoptVault({ musik: { lieder: [{ name:'x' }] } }))
+      throw new Error('beim Laden wird eine Musikliste angelegt');
+    return 'nichts davon im Bestand';
+  });
+
+  await p.check('Musik hören steht nicht doppelt im Wohnzimmer', () => {
+    /* Es gab schon einen Knopf „Musik hören" als einmaligen Laune-Schub.
+       Der Musikspieler hat seinen Platz übernommen; stünde beides da,
+       hätte man zwei Knöpfe mit demselben Namen und verschiedenem Tun. */
+    T.state.raum = 'wohnen';
+    T.DATA.bella.ort = 'wohnen';
+    T.DATA.bella.schlaeft = false;
+    T.render();
+    const knoepfe = $$('#tasten .taste').map(b => b.textContent.trim());
+    const musik = knoepfe.filter(t => t.indexOf('MUSIK') === 0);
+    if (musik.length !== 1) throw new Error('Musikknöpfe: ' + knoepfe.join(' | '));
+    if (!knoepfe.includes('VORLESEN')) throw new Error('VORLESEN ist weggefallen: ' + knoepfe.join(' | '));
+    if (!knoepfe.includes('REDEN')) throw new Error('REDEN ist weggefallen: ' + knoepfe.join(' | '));
+    return knoepfe.join(' | ');
   });
 
   /* --- Bella-Modelle --- */

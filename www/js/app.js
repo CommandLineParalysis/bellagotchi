@@ -86,6 +86,7 @@ const state = {
   plansch: null,      // planscht Bella gerade in der Wanne?
   platzieren: null,   // { was } — welcher Gegenstand gerade gesetzt wird
   bildzaehler: 0,     // treibt die Zappel-Animation
+  musik: null,        // { lieder, nr, laeuft, seit } — nur im Arbeitsspeicher
 };
 
 function vaultPayload(){
@@ -474,6 +475,13 @@ function standFortschreiben(jetzt){
   const zieh = Math.min(1, minuten / (6 * 60));
   b.laune = begrenzen(b.laune + (schnitt - b.laune) * zieh);
 
+  /* Musik hebt die Laune, solange sie läuft — nicht einmalig beim
+     Anschalten. Gerechnet wird über die Minuten, die in diesem
+     Abschnitt wirklich gespielt wurden; nie mehr, als überhaupt
+     vergangen ist. */
+  const musik = musikGutschrift(nun, echteMinuten);
+  if (musik > 0) b.laune = begrenzen(b.laune + MUSIK_LAUNE * musik / 60);
+
   [ 'satt', 'sauber', 'ausgeruht', 'laune' ].forEach(k => {
     if (b[k] < BODEN_WERT) b[k] = BODEN_WERT;
   });
@@ -837,6 +845,170 @@ function schlaflage(jetzt){
 }
 
 /* Zappeln: ein Pixel reicht — zwei sehen aus, als würde sie hüpfen. */
+/* ---------- Musik ----------
+   Die Lieder kommen vom Handy und bleiben dort. Gewählt wird über den
+   Dateiwähler des Geräts; abgespielt wird über eine Adresse, die nur im
+   Arbeitsspeicher steht. Die App legt also **keine Kopie** an — dafür ist
+   die Liste nach dem Schließen wieder leer. Genau so gewollt: sonst läge
+   die halbe Musiksammlung ein zweites Mal auf dem Gerät.
+
+   Kein Netz ist im Spiel. Die Datei kommt aus dem Gerät und geht nicht
+   hinaus; die App hat weiterhin keine Interneterlaubnis.
+
+   Gehört wird in der ganzen Wohnung, getanzt nur im Wohnzimmer. */
+
+const MUSIK_LAUNE = 12;        // Laune je Stunde, solange Musik läuft
+const TANZ_TAKT_MS = 620;      // ein Viertel; vier davon sind ein Takt
+
+let musikGeraet = null;        // das <audio>-Element, einmal angelegt
+
+function musikGeraetHolen(){
+  if (musikGeraet) return musikGeraet;
+  if (typeof Audio !== 'function') return null;
+  musikGeraet = new Audio();
+  /* Ist ein Lied zu Ende, kommt das nächste; am Ende der Liste geht es
+     wieder vorn los. Ohne das hörte die Musik mitten im Spielen auf und
+     niemand wüsste warum. */
+  musikGeraet.addEventListener('ended', () => { musikWeiter(1); });
+  return musikGeraet;
+}
+
+function musikStand(){
+  if (!state.musik) state.musik = { lieder: [], nr: 0, laeuft: false, seit: 0 };
+  return state.musik;
+}
+
+function musikLaeuft(){ return !!musikStand().laeuft; }
+
+function musikLied(){
+  const m = musikStand();
+  return m.lieder[m.nr] || null;
+}
+
+/* Wie viele Minuten Musik seit der letzten Abrechnung gelaufen sind.
+   Abgerechnet wird beim Fortschreiben des Standes und beim Anhalten,
+   damit kein Abschnitt doppelt und keiner gar nicht zählt. */
+function musikGutschrift(nun, hoechstens){
+  const m = state.musik;
+  if (!m || !m.laeuft || !m.seit) return 0;
+  const jetzt = (nun || new Date()).getTime();
+  const min = (jetzt - m.seit) / 60000;
+  m.seit = jetzt;
+  if (!(min > 0)) return 0;
+  return Number.isFinite(hoechstens) ? Math.min(min, hoechstens) : min;
+}
+
+/* Alles anhalten und die Adressen freigeben. Ohne das Freigeben hielte
+   der Arbeitsspeicher jede je gewählte Datei fest. */
+function musikAus(){
+  const m = musikStand();
+  const min = musikGutschrift(new Date(), 60);
+  if (min > 0) DATA.bella.laune = begrenzen(DATA.bella.laune + MUSIK_LAUNE * min / 60);
+  if (musikGeraet){
+    try { musikGeraet.pause(); } catch (e){}
+    try { musikGeraet.removeAttribute('src'); musikGeraet.load(); } catch (e){}
+  }
+  m.lieder.forEach(l => {
+    if (!l.url) return;
+    try { URL.revokeObjectURL(l.url); } catch (e){}
+    l.url = null;
+  });
+  m.laeuft = false;
+  m.seit = 0;
+}
+
+function musikHalten(){
+  const m = musikStand();
+  const min = musikGutschrift(new Date(), 60);
+  if (min > 0) DATA.bella.laune = begrenzen(DATA.bella.laune + MUSIK_LAUNE * min / 60);
+  if (musikGeraet){ try { musikGeraet.pause(); } catch (e){} }
+  m.laeuft = false;
+  m.seit = 0;
+}
+
+/* Was der Dateiwähler zurückgibt, wird die neue Liste. Alles Alte wird
+   vorher angehalten und freigegeben. */
+function musikWaehlen(dateien){
+  const m = musikStand();
+  musikAus();
+  m.lieder = Array.from(dateien || []).filter(d => d &&
+    (String(d.type || '').indexOf('audio') === 0
+     || /\.(mp3|m4a|aac|ogg|opus|wav|flac)$/i.test(d.name || '')))
+    .map(d => ({ name: String(d.name || 'Lied').replace(/\.[^.]+$/, '').slice(0, 40), datei: d, url: null }));
+  m.nr = 0;
+  return m.lieder.length;
+}
+
+function musikSpielen(nr){
+  const m = musikStand();
+  if (!m.lieder.length) return false;
+  m.nr = ((nr % m.lieder.length) + m.lieder.length) % m.lieder.length;
+  const g = musikGeraetHolen();
+  if (!g) return false;
+  const lied = m.lieder[m.nr];
+  if (!lied.url && typeof URL !== 'undefined' && URL.createObjectURL){
+    try { lied.url = URL.createObjectURL(lied.datei); } catch (e){ lied.url = null; }
+  }
+  if (lied.url) g.src = lied.url;
+  m.laeuft = true;
+  m.seit = Date.now();
+  /* Lässt sich das Lied nicht abspielen, darf der Knopf nicht trotzdem
+     „läuft" zeigen — sonst stiege die Laune von Musik, die niemand
+     hört. */
+  const misslungen = () => {
+    m.laeuft = false; m.seit = 0;
+    sagen('Das Lied lässt sich nicht abspielen.');
+    render();
+  };
+  try {
+    const versuch = g.play && g.play();
+    if (versuch && versuch.catch) versuch.catch(misslungen);
+  } catch (e){ misslungen(); }
+  return true;
+}
+
+function musikWeiter(schritt){
+  const m = musikStand();
+  if (!m.lieder.length) return;
+  musikGutschrift(new Date(), 60);
+  musikSpielen(m.nr + schritt);
+}
+
+/* ---------- Tanzen ----------
+   Nur im Wohnzimmer, und nur wenn sie da ist: die Musik ist überall zu
+   hören, der Platz zum Tanzen ist im Wohnzimmer. */
+function tanzt(raum){
+  return raum === 'wohnen' && DATA.bella.ort === 'wohnen'
+      && !DATA.bella.schlaeft && musikLaeuft();
+}
+
+/* Vier Viertel: auf jedem wippt sie, über den ganzen Takt schwingt sie
+   zur Seite, und in der Mitte dreht sie sich um. */
+function tanzLage(jetzt){
+  const takt = TANZ_TAKT_MS * 4;
+  const t = ((jetzt || Date.now()) % takt) / takt;
+  return {
+    hoch:    Math.round(Math.abs(Math.sin(t * Math.PI * 4)) * 5),
+    seite:   Math.round(Math.sin(t * Math.PI * 2) * 7),
+    spiegel: t >= 0.5,
+  };
+}
+
+/* Noten steigen über ihr auf und verblassen. Drei Stück mit Versatz,
+   sonst sähe es aus wie ein Metronom. */
+function maleNoten(ctx, s, mx, obenCm){
+  const dauer = TANZ_TAKT_MS * 6;
+  for (let i = 0; i < 3; i++){
+    const t = ((Date.now() + i * dauer / 3) % dauer) / dauer;
+    const nx = mx + (i === 1 ? -1 : 1) * (9 + i * 6) + Math.sin(t * Math.PI * 2) * 5;
+    const ny = obenCm - t * 46;
+    const farbe = 'rgba(255,240,106,' + (Math.max(0, 1 - t) * 0.9).toFixed(2) + ')';
+    ellipse(ctx, s, nx, ny, 4, 3, farbe);              // Notenkopf
+    px(ctx, s, nx + 2.4, ny - 13, 1.6, 13, farbe);     // Hals
+    if (i % 2 === 0) px(ctx, s, nx + 4, ny - 13, 4, 1.6, farbe);   // Fähnchen
+  }
+}
+
 function zappel(){
   if (DATA.bella.schlaeft) return 0;
   const st = stimmung();
@@ -1109,9 +1281,16 @@ function maleZimmer(ctx, s, raum, ohneBella){
   const vorn = Math.round(bodenbandCm(s) * 0.5);
   const isst = state.essen && raum === 'kueche';
   const takt = Math.floor(Date.now() / 220) % 4;
-  const neigung = isst && takt % 3 === 1 ? 2 : zappel();
-  maleBellaStehend(ctx, s, bx, bodenY + vorn + neigung,
-                   isst ? (takt === 2 ? 'satt' : 'froh') : stimmung());
+  /* Tanzt sie, hebt sie sich im Takt, schwingt zur Seite und dreht sich
+     um. Das geht über dieselbe Stelle wie sonst — ein gemaltes Modell
+     tanzt deshalb genauso wie die gezeichnete. */
+  const tanz = tanzt(raum) ? tanzLage() : null;
+  const neigung = isst && takt % 3 === 1 ? 2 : (tanz ? -tanz.hoch : zappel());
+  const tanzX = tanz ? Math.max(2, Math.min(s.b - bb - 2, bx + tanz.seite)) : bx;
+  maleBellaStehend(ctx, s, tanzX, bodenY + vorn + neigung,
+                   isst ? (takt === 2 ? 'satt' : 'froh') : (tanz ? 'froh' : stimmung()),
+                   false, tanz ? tanz.spiegel : false);
+  if (tanz) maleNoten(ctx, s, tanzX + bb / 2, bodenY + vorn - GROESSEN_CM.bella - 6);
   if (isst){
     const tellerB = breiteCm('teller', KOCHZEUG.teller);
     maleNachMass(ctx, s, 'teller', KOCHZEUG.teller, bx + bb / 2 - tellerB / 2,
@@ -2704,6 +2883,68 @@ function fensterReden(){
   });
 }
 
+/* Der Musikspieler. Die Liste ist bewusst flüchtig: gewählt wird beim
+   Dateiwähler des Handys, gespielt wird von dort, und nichts davon wird
+   kopiert oder gemerkt. Steht darunter, damit niemand sich wundert. */
+function fensterMusik(){
+  state.offen = 'musik';
+  const m = musikStand();
+  fensterOeffnen('MUSIK', blatt => {
+    const feld = h('input', { type:'file', accept:'audio/*', multiple:'multiple',
+                              id:'musikfeld', style:'display:none' });
+    feld.onchange = async () => {
+      const wie = musikWaehlen(feld.files);
+      if (wie) musikSpielen(0);
+      fensterMusik();
+      if (wie) await pflegen({ laune: 5, sagt: 'Musik! Gleich tanz ich.' });
+      else { sagen('Da war nichts zum Abspielen dabei.'); render(); }
+    };
+    blatt.appendChild(feld);
+    blatt.appendChild(h('div', { class:'zeile' },
+      h('button', { class:'taste haupt breit', id:'musikwahl', text:'LIEDER WÄHLEN',
+                    onclick: () => feld.click() })));
+
+    if (!m.lieder.length){
+      blatt.appendChild(h('div', { class:'leer',
+        text: typeof Audio === 'function'
+          ? 'Noch nichts gewählt. Die Lieder bleiben auf deinem Handy — die App legt '
+            + 'keine Kopie an und merkt sie sich nicht. Beim nächsten Start wählst du neu.'
+          : 'Dieses Gerät kann keine Musik abspielen.' }));
+      return;
+    }
+
+    const gitter = h('div', { class:'gitter', id:'musikliste' });
+    m.lieder.forEach((lied, i) => {
+      gitter.appendChild(h('button', {
+        class:'stueck' + (i === m.nr ? ' an' : ''), 'data-lied': String(i),
+        onclick: () => { musikSpielen(i); fensterMusik(); render(); },
+      }, (i === m.nr && m.laeuft ? '▶ ' : '') + lied.name));
+    });
+    blatt.appendChild(h('div', { class:'block' },
+      h('div', { class:'blockkopf', text: m.lieder.length + ' LIEDER' }), gitter));
+
+    /* Drei Knöpfe nebeneinander passen im Fenster nicht in eine Zeile —
+       gemessen, nicht geschätzt: sie brauchen 290 Punkte, da sind 287.
+       Also der wichtigste breit, die beiden Sprünge darunter. */
+    blatt.appendChild(h('div', { class:'zeile' },
+      h('button', { class:'taste haupt breit', id:'musikhalt', text: m.laeuft ? 'PAUSE' : 'SPIELEN',
+                    onclick: () => { if (m.laeuft) musikHalten(); else musikSpielen(m.nr);
+                                     fensterMusik(); render(); } })));
+    blatt.appendChild(h('div', { class:'zeile' },
+      h('button', { class:'taste', id:'musikzurueck', text:'ZURÜCK',
+                    onclick: () => { musikWeiter(-1); fensterMusik(); render(); } }),
+      h('button', { class:'taste', id:'musikvor', text:'VOR',
+                    onclick: () => { musikWeiter(1); fensterMusik(); render(); } })));
+    blatt.appendChild(h('div', { class:'zeile' },
+      h('button', { class:'taste breit', id:'musikaus', text:'MUSIK AUS',
+                    onclick: () => { musikAus(); m.lieder = []; m.nr = 0;
+                                     fensterMusik(); render(); } })));
+    blatt.appendChild(h('div', { class:'leer',
+      text:'Die Musik läuft in der ganzen Wohnung weiter, auch wenn du das Zimmer wechselst. '
+         + 'Getanzt wird im Wohnzimmer.' }));
+  });
+}
+
 function fensterEinstellungen(){
   state.offen = 'einstellungen';
   fensterOeffnen('EINSTELLUNGEN', blatt => {
@@ -2853,8 +3094,16 @@ function tastenFuer(raum){
     return [
       ruf,
       braucht('REDEN', fensterReden, 'haupt'),
-      ...AKTIVITAETEN.slice(0, 2).map(a => braucht(a.name.toUpperCase(),
-        () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
+      /* „Musik hören" war ein einmaliger Laune-Schub. Jetzt steht der
+         Musikspieler dahinter: Lieder vom Handy, und Bella tanzt dazu.
+         Der Knopf heißt weiter so und steht, wo er immer stand.
+
+         Er braucht Bella nicht: die Musik läuft in der ganzen Wohnung
+         und lässt sich auch anstellen, während sie in der Küche ist. */
+      taste('MUSIK HÖREN' + (musikLaeuft() ? ' ▶' : ''), fensterMusik),
+      ...AKTIVITAETEN.filter(a => a.id !== 'musik').slice(0, 1)
+        .map(a => braucht(a.name.toUpperCase(),
+          () => pflegen({ laune:a.laune, ausgeruht:a.ausgeruht, sagt:a.sagt }))),
     ].filter(Boolean);
   }
 
@@ -2956,7 +3205,10 @@ function waehler(titel, eintraege, istAn, beiWahl){
     gitter.appendChild(h('button', {
       class:'stueck' + (istAn(e.id) ? ' an' : ''), 'data-wahl': e.id,
       onclick: () => beiWahl(e.id),
-    }, e.farbe ? h('span', { class:'farbe', style:'background:' + e.farbe }) : null, e.name));
+    /* Ein Eintrag kann statt des Farbquadrats ein Bild tragen — dann
+       steht in der Liste das gemalte Stück und nicht nur seine Farbe,
+       wie bei Vorräten und Snacks. */
+    }, e.bild || (e.farbe ? h('span', { class:'farbe', style:'background:' + e.farbe }) : null), e.name));
   });
   block.appendChild(gitter);
   return block;
@@ -3357,7 +3609,8 @@ function fensterBadezusatz(){
   fensterOeffnen('BADEZUSATZ', blatt => {
     blatt.appendChild(waehler('INS WASSER',
       DATA.besitz.zusaetze.map(id => ({ id, name: BADEZUSAETZE[id].name,
-                                        farbe: BADEZUSAETZE[id].wasser[1] })),
+                                        bild: listenBild('zusatz_' + id, null,
+                                                         BADEZUSAETZE[id].wasser[1]) })),
       id => DATA.bad.zusatz === id,
       async id => {
         DATA.bad.zusatz = id;
@@ -3527,6 +3780,10 @@ function bildplaetzeAnmelden(){
     bildplatzAnlegen('szene_wanne_' + z);
     bildplatzAnlegen('wanne_' + z);
     bildplatzAnlegen('blase_' + z);
+    /* Das Fläschchen in der Auswahlliste — wie bei Zutaten und Snacks.
+       Das ist nicht die gemalte Wanne, sondern das Bild daneben im
+       Fenster BADEZUSATZ. */
+    bildplatzAnlegen('zusatz_' + z);
   });
   /* Bella in Schichten: je Modell, je Haltung, je Schicht ein Platz —
      und dazu je Frisur, Kleidungsstück, Schuhpaar, Laune und Accessoire

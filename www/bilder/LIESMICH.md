@@ -372,6 +372,12 @@ Zentimeter-Tabelle oben nicht — sie haben eigene Maße:
 | `zutat_erdbeere`, `zutat_milch`, `zutat_mehl`, `zutat_honig`, `zutat_beere`, `zutat_ei` | Listen + Kochkarte (24 cm hoch) | **134 px hoch**, quadratisch |
 | `gericht_<rezept>` | Kochkarte (30 cm hoch) | **168 px hoch** |
 | `snack_keks`, `snack_schoki`, `snack_apfel`, `snack_brezel`, `snack_lutscher`, `snack_joghurt`, `snack_nuesse`, `snack_gummibaer` | nur die Snack-Liste | **quadratisch, 80–160 px** |
+| `zusatz_klar`, `zusatz_rosen`, `zusatz_minze`, `zusatz_lavendel`, `zusatz_zitrone`, `zusatz_galaxie` | die Liste im Fenster BADEZUSATZ | **quadratisch, 80–160 px** |
+
+Der Badezusatz hat zwei ganz verschiedene Bilder, die nichts miteinander
+zu tun haben: `zusatz_<id>` ist das Fläschchen in der Auswahlliste,
+`szene_wanne_<id>` die gemalte Badeszene (siehe oben). Du kannst eins von
+beiden liefern oder beide.
 
 In den Listen wird das Bild mittig in ein Kästchen gesetzt und nur um
 ganze Vielfache vergrößert, solange es hineinpasst — ein gemalter Punkt
